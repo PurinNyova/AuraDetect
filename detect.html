@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraDetect | AI Image Scanner</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Theme Variables mapped from Chakra config */
+    :root {
+      --font-main: "Inter", sans-serif;
+      --brand-primary: #F888B5;
+      --brand-hover: #BAA4ED;
+    }
+
+    [data-theme="dark"] {
+      --surface-panel: #1D1921;
+      --surface-input: #1A1419;
+      --surface-dropdown: #1A1419;
+      --text-primary: #D2C7E1;
+      --text-muted: #7A6483;
+      --text-muted-lighter: #a692b4;
+      --border-default: #7A6483;
+      --border-subtle: rgba(122, 100, 131, 0.4);
+      --brand-transparent: rgba(248, 136, 181, 0.1);
+      
+      --status-success-text: #96D0BB;
+      --status-success-bg: rgba(150, 208, 187, 0.1);
+      --status-success-border: rgba(150, 208, 187, 0.3);
+      
+      --status-error-text: #F85149;
+      --status-error-bg: rgba(248, 81, 73, 0.1);
+      --status-error-border: rgba(248, 81, 73, 0.3);
+    }
+
+    [data-theme="light"] {
+      --surface-panel: #ffffff;
+      --surface-input: #f4eef7;
+      --surface-dropdown: #ffffff;
+      --text-primary: #231728;
+      --text-muted: #715b7a;
+      --text-muted-lighter: #8f7f98;
+      --border-default: rgba(113, 91, 122, 0.28);
+      --border-subtle: rgba(113, 91, 122, 0.18);
+      --brand-transparent: rgba(248, 136, 181, 0.18);
+      
+      --status-success-text: #1d6b51;
+      --status-success-bg: rgba(150, 208, 187, 0.16);
+      --status-success-border: rgba(29, 107, 81, 0.22);
+      
+      --status-error-text: #b42318;
+      --status-error-bg: rgba(248, 81, 73, 0.12);
+      --status-error-border: rgba(180, 35, 24, 0.22);
+    }
+
+    /* Base Reset & Styling */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    html, body {
+      font-family: var(--font-main);
+      background-color: var(--surface-input);
+      color: var(--text-primary);
+      min-height: 100vh;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    button {
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      padding: 0.75rem 1.25rem; 
+      border-radius: 8px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      font-size: 1rem;
+    }
+
+    .btn-primary {
+      background-color: var(--brand-primary);
+      color: #1A1419; /* High contrast text */
+    }
+    
+    .btn-primary:hover {
+      background-color: var(--brand-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-large {
+      padding: 1rem 2rem;
+      font-size: 1.125rem;
+      border-radius: 12px;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+    }
+
+    .btn-ghost:hover {
+      background-color: var(--border-subtle);
+      color: var(--text-primary);
+    }
+
+    /* Layout */
+    header {
+      background-color: var(--surface-panel);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--brand-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      user-select: none;
+      text-decoration: none;
+    }
+
+    main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* Landing Page Specifics */
+    #landingSection {
+      animation: fadeIn 0.5s ease-out;
+    }
+
+    .landing-hero {
+      text-align: center;
+      padding: 4rem 0 3rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .landing-hero h1 {
+      font-size: 3.5rem;
+      line-height: 1.2;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(135deg, var(--brand-primary), var(--brand-hover));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: var(--brand-primary); /* fallback */
+    }
+
+    .landing-hero p {
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      margin-bottom: 2.5rem;
+      line-height: 1.6;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+      margin-top: 4rem;
+    }
+
+    .feature-card {
+      background-color: var(--surface-panel);
+      border: 1px solid var(--border-subtle);
+      padding: 2rem;
+      border-radius: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      border-color: var(--brand-transparent);
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background-color: var(--brand-transparent);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+      color: var(--brand-primary);
+    }
+
+    .feature-icon svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* App Workspace Area */
+    #appSection {
+      display: none;
+      animation: fadeIn 0.4s ease-out;
+      margin-top: 2rem;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .hero h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+
+    /* Upload Area */
+    .upload-card {
+      background-color: var(--surface-panel);
+      border: 2px dashed var(--border-default);
+      border-radius: 16px;
+      padding: 4rem 2rem;
+      text-align: center;
+      transition: border-color 0.3s, background-color 0.3s;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .upload-card:hover, .upload-card.dragover {
+      border-color: var(--brand-primary);
+      background-color: var(--brand-transparent);
+    }
+
+    .upload-icon {
+      width: 64px;
+      height: 64px;
+      fill: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    /* Results Dashboard */
+    .results-container {
+      display: none;
+      background-color: var(--surface-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .results-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 768px) {
+      .results-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .image-preview {
+      border-right: 1px solid var(--border-subtle);
+      background-color: var(--surface-input);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .image-preview img {
+      max-width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .analysis-panel {
+      padding: 2rem;
+    }
+
+    .score-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 50px;
+      font-weight: 700;
+      font-size: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .score-error {
+      background-color: var(--status-error-bg);
+      color: var(--status-error-text);
+      border: 1px solid var(--status-error-border);
+    }
+
+    .metric {
+      margin-bottom: 1.5rem;
+    }
+
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--text-muted-lighter);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background-color: var(--surface-input);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-color: var(--status-error-text);
+      transition: width 1s ease-out;
+    }
+    
+    .progress-fill.safe {
+      background-color: var(--status-success-text);
+    }
+
+    /* Loader */
+    .loader {
+      display: none;
+      text-align: center;
+      margin: 4rem 0;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--border-subtle);
+      border-top-color: var(--brand-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: translateY(10px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .landing-hero h1 { font-size: 2.5rem; }
+      header { padding: 1rem; }
+      .results-header { flex-direction: column; gap: 1rem; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a href="#" class="logo" onclick="goHome(event)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+      AuraDetect
+    </a>
+    <nav>
+      <button class="btn-ghost" id="themeToggle">Toggle Theme</button>
+      <button class="btn-primary" onclick="showApp()" style="padding: 0.5rem 1rem; font-size: 0.875rem; margin-left: 0.5rem;">Launch App</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- LANDING SECTION -->
+    <div id="landingSection">
+      <div class="landing-hero">
+        <h1>Free & Open Source AI Detection</h1>
+        <p>An advanced, community-driven neural network designed to detect AI-generated imagery, deepfakes, and synthetic manipulations. 100% free, transparent, and open source.</p>
+        <button class="btn-primary btn-large" onclick="showApp()">Start Scanning Now</button>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          </div>
+          <h3>GAN Artifact Detection</h3>
+          <p>Identifies micro-artifacts left behind by Generative Adversarial Networks that are completely invisible to the human eye.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 3H3C2 3 1 4 1 5v14c0 1.1.9 2 2 2h18c1 0 2-.9 2-2V5c0-1-1-2-2-2zM5 17l3.5-4.5 2.5 3.01L14.5 11l4.5 6H5z"/></svg>
+          </div>
+          <h3>Diffusion Noise Analysis</h3>
+          <p>Analyzes image noise profiles specifically looking for uniform diffusion patterns found in tools like Midjourney and Stable Diffusion.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </div>
+          <h3>Facial Consistency Check</h3>
+          <p>Scans for asymmetrical pupils, irregular ear shapes, and illogical lighting on facial structures common in AI portraits.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- APP SECTION -->
+    <div id="appSection">
+      <div class="hero">
+        <h1>Detect AI-Generated Content</h1>
+        <p>Upload an image to analyze noise patterns, metadata, and pixel artifacts.</p>
+      </div>
+
+      <div class="upload-card" id="uploadZone">
+        <svg class="upload-icon" viewBox="0 0 24 24">
+          <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+        </svg>
+        <h3 style="margin-bottom: 0.5rem;">Drag & drop your image here</h3>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9rem;">Supports JPG, PNG, WEBP (Max 10MB)</p>
+        <button class="btn-primary" onclick="simulateUpload()">Browse Files</button>
+      </div>
+
+      <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <p style="color: var(--text-muted);">Running neural network analysis...</p>
+      </div>
+
+      <div class="results-container" id="results">
+        <div class="results-header">
+          <h2>Analysis Report</h2>
+          <button class="btn-ghost" onclick="resetApp()">Scan Another Image</button>
+        </div>
+        <div class="results-grid">
+          <div class="image-preview">
+            <img src="https://images.unsplash.com/photo-1682687982501-1e5898cb8f4b?q=80&w=600&auto=format&fit=crop" alt="Uploaded Preview">
+          </div>
+          <div class="analysis-panel">
+            <div class="score-badge score-error">
+              ⚠️ 94% AI Generated
+            </div>
+            
+            <div class="metric">
+              <div class="metric-header">
+                <span>GAN Artifact Detection</span>
+                <span>98%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width: 0%;" data-target="98%"></div></div>
+            </div>
+
+            <div class="metric">
+              <div class="metric-header">
+                <span>Diffusion Noise Pattern</span>
+                <span>92%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width: 0%;" data-target="92%"></div></div>
+            </div>
+
+            <div class="metric">
+              <div class="metric-header">
+                <span>Human Feature Consistency</span>
+                <span>15%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill safe" style="width: 0%;" data-target="15%"></div></div>
+            </div>
+
+            <p style="margin-top: 2rem; font-size: 0.9rem; color: var(--text-muted-lighter); line-height: 1.5;">
+              <strong>System Notes:</strong> High probability of synthetic generation detected. Prominent diffusion artifacts found in the background depth map, and irregular micro-textures observed.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const landingSection = document.getElementById('landingSection');
+    const appSection = document.getElementById('appSection');
+    const uploadZone = document.getElementById('uploadZone');
+    const loader = document.getElementById('loader');
+    const results = document.getElementById('results');
+    const themeToggle = document.getElementById('themeToggle');
+    const htmlEl = document.documentElement;
+
+    // View Navigation
+    function showApp() {
+      landingSection.style.display = 'none';
+      appSection.style.display = 'block';
+      resetApp();
+      window.scrollTo(0, 0);
+    }
+
+    function goHome(e) {
+      if(e) e.preventDefault();
+      landingSection.style.display = 'block';
+      appSection.style.display = 'none';
+      window.scrollTo(0, 0);
+    }
+
+    // Theme Toggle Logic
+    themeToggle.addEventListener('click', () => {
+      const currentTheme = htmlEl.getAttribute('data-theme');
+      htmlEl.setAttribute('data-theme', currentTheme === 'dark' ? 'light' : 'dark');
+    });
+
+    // Drag and Drop styling
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      uploadZone.addEventListener(eventName, preventDefaults, false)
+    });
+
+    function preventDefaults (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'), false)
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      uploadZone.addEventListener(eventName, () => uploadZone.classList.remove('dragover'), false)
+    });
+
+    uploadZone.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+      simulateUpload();
+    }
+
+    // Simulation Flow
+    function simulateUpload() {
+      uploadZone.style.display = 'none';
+      loader.style.display = 'block';
+      results.style.display = 'none';
+
+      // Reset progress bars
+      document.querySelectorAll('.progress-fill').forEach(bar => {
+        bar.style.width = '0%';
+      });
+
+      // Fake API request delay
+      setTimeout(() => {
+        loader.style.display = 'none';
+        results.style.display = 'block';
+        
+        // Animate progress bars
+        setTimeout(() => {
+          document.querySelectorAll('.progress-fill').forEach(bar => {
+            bar.style.width = bar.getAttribute('data-target');
+          });
+        }, 100);
+      }, 2000);
+    }
+
+    function resetApp() {
+      results.style.display = 'none';
+      loader.style.display = 'none';
+      uploadZone.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,282 @@
+"use client";
+
+import {
+  Box,
+  Button,
+  Container,
+  Flex,
+  Grid,
+  Heading,
+  Text,
+} from "@chakra-ui/react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+
+const metrics = [
+  { label: "GAN Artifact Detection", value: 98, tone: "error" },
+  { label: "Diffusion Noise Pattern", value: 92, tone: "error" },
+  { label: "Human Feature Consistency", value: 15, tone: "success" },
+] as const;
+
+type AppState = "idle" | "loading" | "results";
+
+export default function ScanPage() {
+  const [appState, setAppState] = useState<AppState>("idle");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [animateProgress, setAnimateProgress] = useState(false);
+  const timeoutIds = useRef<number[]>([]);
+
+  const clearSimulationTimers = () => {
+    timeoutIds.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    timeoutIds.current = [];
+  };
+
+  useEffect(() => {
+    return () => {
+      clearSimulationTimers();
+    };
+  }, []);
+
+  const resetApp = () => {
+    clearSimulationTimers();
+    setAppState("idle");
+    setAnimateProgress(false);
+    setIsDragOver(false);
+  };
+
+  const simulateUpload = () => {
+    clearSimulationTimers();
+    setIsDragOver(false);
+    setAnimateProgress(false);
+    setAppState("loading");
+
+    timeoutIds.current.push(
+      window.setTimeout(() => {
+        setAppState("results");
+
+        timeoutIds.current.push(
+          window.setTimeout(() => {
+            setAnimateProgress(true);
+          }, 100),
+        );
+      }, 2000),
+    );
+  };
+
+  return (
+    <Container maxW="1200px" px={{ base: "4", md: "6" }} py="8" mx="auto">
+      <Box animation="fadeIn 0.4s ease-out" mt="8">
+        <Box textAlign="center" mb="12">
+          <Heading as="h1" fontSize="2.5rem" mb="2">
+            Detect AI-Generated Content
+          </Heading>
+          <Text color="fg.muted" fontSize="1.1rem">
+            Upload an image to analyze noise patterns, metadata, and pixel artifacts.
+          </Text>
+        </Box>
+
+        {appState === "idle" ? (
+          <Box
+            borderWidth="2px"
+            borderStyle="dashed"
+            borderColor={isDragOver ? "brand.primary" : "border.default"}
+            borderRadius="panel"
+            px="8"
+            py="16"
+            textAlign="center"
+            maxW="800px"
+            mx="auto"
+            transition="border-color 0.3s, background-color 0.3s"
+            _hover={{ borderColor: "brand.primary", bg: "bg.overlay" }}
+            bg={isDragOver ? "bg.overlay" : "bg.panel"}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              setIsDragOver(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              simulateUpload();
+            }}
+          >
+            <Box color="fg.muted" mb="4">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
+              </svg>
+            </Box>
+            <Heading as="h3" fontSize="1.17rem" mb="2">
+              Drag and drop your image here
+            </Heading>
+            <Text color="fg.muted" mb="6" fontSize="0.9rem">
+              Supports JPG, PNG, WEBP (Max 10MB)
+            </Text>
+            <Button
+              height="auto"
+              minW="auto"
+              bg="brand.primary"
+              color="#1A1419"
+              px="5"
+              py="3"
+              borderRadius="control"
+              fontWeight="600"
+              fontSize="1rem"
+              transition="all 0.2s ease"
+              _hover={{ bg: "brand.hover", transform: "translateY(-1px)" }}
+              _active={{ transform: "translateY(0)" }}
+              onClick={simulateUpload}
+            >
+              Browse Files
+            </Button>
+          </Box>
+        ) : null}
+
+        {appState === "loading" ? (
+          <Box display="block" textAlign="center" my="16">
+            <Box
+              width="40px"
+              height="40px"
+              borderWidth="4px"
+              borderStyle="solid"
+              borderColor="border.subtle"
+              borderTopColor="brand.primary"
+              borderRadius="full"
+              animation="spin 1s linear infinite"
+              mx="auto"
+              mb="4"
+            />
+            <Text color="fg.muted">Running neural network analysis...</Text>
+          </Box>
+        ) : null}
+
+        {appState === "results" ? (
+          <Box
+            display="block"
+            bg="bg.panel"
+            borderWidth="1px"
+            borderColor="border.subtle"
+            borderRadius="panel"
+            overflow="hidden"
+            boxShadow="panel"
+          >
+            <Flex
+              px="6"
+              py="6"
+              borderBottomWidth="1px"
+              borderColor="border.subtle"
+              justify="space-between"
+              align={{ base: "flex-start", sm: "center" }}
+              direction={{ base: "column", sm: "row" }}
+              gap="4"
+            >
+              <Heading as="h2" fontSize="1.5rem">
+                Analysis Report
+              </Heading>
+              <Button
+                height="auto"
+                minW="auto"
+                bg="transparent"
+                color="fg.muted"
+                px="4"
+                py="3"
+                borderRadius="control"
+                fontWeight="600"
+                fontSize="1rem"
+                transition="all 0.2s ease"
+                _hover={{ bg: "border.subtle", color: "fg.default" }}
+                _active={{ bg: "border.subtle" }}
+                onClick={resetApp}
+              >
+                Scan Another Image
+              </Button>
+            </Flex>
+
+            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }}>
+              <Flex
+                borderRightWidth="1px"
+                borderColor="border.subtle"
+                bg="bg.input"
+                align="center"
+                justify="center"
+                p="8"
+              >
+                <img
+                  src="https://images.unsplash.com/photo-1682687982501-1e5898cb8f4b?q=80&w=600&auto=format&fit=crop"
+                  alt="Uploaded Preview"
+                  style={{
+                    maxWidth: "100%",
+                    borderRadius: "8px",
+                    border: "1px solid var(--chakra-colors-border-subtle)",
+                  }}
+                />
+              </Flex>
+
+              <Box p="8">
+                <Flex
+                  display="inline-flex"
+                  align="center"
+                  gap="2"
+                  px="6"
+                  py="3"
+                  borderRadius="9999px"
+                  fontWeight="700"
+                  fontSize="1.25rem"
+                  mb="8"
+                  bg="status.error.bg"
+                  color="status.error.text"
+                  borderWidth="1px"
+                  borderColor="status.error.border"
+                >
+                  <Text as="span">⚠️</Text>
+                  <Text as="span">94% AI Generated</Text>
+                </Flex>
+
+                {metrics.map((metric) => {
+                  const toneColor =
+                    metric.tone === "success" ? "status.success.text" : "status.error.text";
+
+                  return (
+                    <Box key={metric.label} mb="6">
+                      <Flex
+                        justify="space-between"
+                        mb="2"
+                        fontSize="0.9rem"
+                        color="fg.subtle"
+                      >
+                        <Text>{metric.label}</Text>
+                        <Text>{metric.value}%</Text>
+                      </Flex>
+                      <Box width="100%" height="8px" bg="bg.input" borderRadius="4px" overflow="hidden">
+                        <Box
+                          height="100%"
+                          bg={toneColor}
+                          transition="width 1s ease-out"
+                          width={animateProgress ? `${metric.value}%` : "0%"}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })}
+
+                <Text mt="8" fontSize="0.9rem" color="fg.subtle" lineHeight="1.5">
+                  <Text as="strong" color="fg.default">
+                    System Notes:
+                  </Text>{" "}
+                  High probability of synthetic generation detected. Prominent diffusion
+                  artifacts found in the background depth map, and irregular micro-textures
+                  observed.
+                </Text>
+              </Box>
+            </Grid>
+          </Box>
+        ) : null}
+      </Box>
+    </Container>
+  );
+}

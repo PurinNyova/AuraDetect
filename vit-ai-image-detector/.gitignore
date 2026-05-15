@@ -1,0 +1,12 @@
+env/
+data/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.ipynb_checkpoints/
+outputs/models/*.pt
+outputs/models/*.bin
+outputs/models/*.safetensors
+outputs/models/*.json
