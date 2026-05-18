@@ -7,13 +7,12 @@ from typing import Any
 import albumentations as A
 import numpy as np
 from PIL import Image
-from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from transformers import ViTImageProcessor
 
 
 LABEL_TO_ID = {"real": 0, "ai": 1}
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
 
 @dataclass(frozen=True)
@@ -45,8 +44,19 @@ def build_eval_pipeline(image_size: int = 384) -> A.Compose:
     )
 
 
-def discover_samples(data_dir: Path) -> list[ImageSample]:
-    image_root = data_dir
+def get_split_root(data_dir: Path, split: str) -> Path:
+    split_root = data_dir / split
+    if split_root.exists():
+        return split_root
+
+    if split in {"train", "val"}:
+        return data_dir
+
+    raise FileNotFoundError(f"Expected split directory at {split_root}.")
+
+
+def discover_samples(data_dir: Path, split: str) -> list[ImageSample]:
+    image_root = get_split_root(data_dir, split)
     if not image_root.exists():
         raise FileNotFoundError(f"Expected dataset at {image_root}. Run 'python src/data_fetch.py' first.")
 
@@ -61,7 +71,7 @@ def discover_samples(data_dir: Path) -> list[ImageSample]:
 
     if not samples:
         raise RuntimeError(
-            f"No images found under {image_root}. Add files to 'real/' and 'ai/' and rerun training."
+            f"No images found under {image_root}. Add files to '{split}/real' and '{split}/ai' and rerun training."
         )
     return samples
 
@@ -71,8 +81,6 @@ class AiImageDataset(Dataset):
         self,
         data_dir: str | Path = "data/dataset",
         split: str = "train",
-        val_ratio: float = 0.1,
-        random_state: int = 42,
         model_name: str = "google/vit-large-patch16-384",
     ) -> None:
         self.data_dir = Path(data_dir)
@@ -80,19 +88,7 @@ class AiImageDataset(Dataset):
         self.processor = ViTImageProcessor.from_pretrained(model_name)
         image_size = self.processor.size["height"] if isinstance(self.processor.size, dict) else 384
 
-        all_samples = discover_samples(self.data_dir)
-        indices = np.arange(len(all_samples))
-        labels = np.array([sample.label for sample in all_samples])
-
-        train_indices, val_indices = train_test_split(
-            indices,
-            test_size=val_ratio,
-            random_state=random_state,
-            stratify=labels,
-        )
-
-        selected_indices = train_indices if split == "train" else val_indices
-        self.samples = [all_samples[index] for index in selected_indices]
+        self.samples = discover_samples(self.data_dir, split)
         self.transform = (
             build_augmentation_pipeline(image_size) if split == "train" else build_eval_pipeline(image_size)
         )

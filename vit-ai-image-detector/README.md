@@ -76,6 +76,22 @@ python src/data_fetch.py
 
 After that, place your images into `data/dataset/real/` and `data/dataset/ai/`, then rerun `python src/data_fetch.py` if you want to refresh `manifest.json`.
 
+To bootstrap the `real/` class from LAION-400M with roughly 10,000 sampled images:
+
+```powershell
+python src/fetch_laion_real.py --limit 10000
+```
+
+The script streams shuffled LAION metadata from Hugging Face, downloads successful image URLs into `data/dataset/real/laion-400m/`, and refreshes `data/dataset/manifest.json`. Some source URLs will be dead or blocked, so the script may need a second run or a higher `--max-attempts` value to fully reach the target count.
+
+To download the Kaggle `factfry/15k-ai-nonai-images` dataset and build a balanced split that keeps `val/` intact, copies all of `train/ai`, and downsamples `train/real` to the same count:
+
+```powershell
+python src/fetch_kaggle_balanced.py
+```
+
+The raw Kaggle archive is stored under `data/raw/factfry-15k-ai-nonai-images/`. The staged output is written to `data/processed/factfry-15k-balanced/` with normalized labels under `train/{ai,real}` and `val/{ai,real}`. Set `KAGGLE_USERNAME` and `KAGGLE_KEY` in `.env` or provide `~/.kaggle/kaggle.json` before running it.
+
 Start fine-tuning:
 
 ```powershell

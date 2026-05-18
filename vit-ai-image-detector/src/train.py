@@ -15,33 +15,39 @@ import argparse
 import json
 from pathlib import Path
 
+print("[DEBUG] Importing libraries...")
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import numpy as np
 import torch
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import AutoModelForImageClassification
 
 from dataset import AiImageDataset, LABEL_TO_ID
 
+print("[DEBUG] Libraries imported successfully")
 # Configuration: Use Google's Vision Transformer (ViT) large model with 384x384 patches
 MODEL_NAME = "google/vit-large-patch16-384"
 
 # Create reverse mapping from numeric IDs (0, 1) to human-readable labels ("Real", "Fake")
 ID_TO_LABEL = {value: key.capitalize() for key, value in LABEL_TO_ID.items()}
 
-
-# Parse command-line arguments for training configuration.
-#
-# Returns:
-#     argparse.Namespace: Parsed arguments containing:
-#         - data_dir: Directory containing train/val image folders
-#         - output_dir: Where to save the trained model and metrics
-#         - epochs: Number of complete passes through the training data
-#         - batch_size: Number of images to process simultaneously
-#         - learning_rate: Step size for optimizer (1e-4 = 0.0001)
-#         - num_workers: Number of parallel data loading processes
+print(f"[DEBUG] define function parse_args()")
 def parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments for training configuration.
+    
+    Returns:
+        argparse.Namespace: Parsed arguments containing:
+            - data_dir: Directory containing split folders like train/real and val/ai
+            - output_dir: Where to save the trained model and metrics
+            - epochs: Number of complete passes through the training data
+            - batch_size: Number of images to process simultaneously
+            - learning_rate: Step size for optimizer (1e-4 = 0.0001)
+            - num_workers: Number of parallel data loading processes
+            - max_train_batches: Optional limit for training batches per epoch
+            - max_val_batches: Optional limit for validation batches per epoch
+    """
     parser = argparse.ArgumentParser(description="Fine-tune ViT on AI vs real images.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/dataset"))
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/models"))
@@ -49,22 +55,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument("--max-train-batches", type=int, default=None)
+    parser.add_argument("--max-val-batches", type=int, default=None)
     return parser.parse_args()
 
-
-# Collate function to combine individual samples into a batch.
-#
-# Steps:
-# 1. Extract pixel_values from each sample and stack into a single tensor
-# 2. Extract labels from each sample and convert to a long tensor
-# 3. Return a dictionary containing the batched data
-#
-# Args:
-#     batch: List of dictionaries, each containing 'pixel_values' and 'labels'
-#
-# Returns:
-#     Dictionary with batched 'pixel_values' and 'labels' tensors
+print(f"[DEBUG] define function collate_fn()")
 def collate_fn(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+    """
+    Collate function to combine individual samples into a batch.
+    
+    Steps:
+    1. Extract pixel_values from each sample and stack into a single tensor
+    2. Extract labels from each sample and convert to a long tensor
+    3. Return a dictionary containing the batched data
+    
+    Args:
+        batch: List of dictionaries, each containing 'pixel_values' and 'labels'
+    
+    Returns:
+        Dictionary with batched 'pixel_values' and 'labels' tensors
+    """
     # Stack all image tensors into shape [batch_size, channels, height, width]
     pixel_values = torch.stack([item["pixel_values"] for item in batch])
     
@@ -73,27 +83,27 @@ def collate_fn(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
     
     return {"pixel_values": pixel_values, "labels": labels}
 
-
-# Create DataLoader objects for training and validation datasets.
-#
-# Steps:
-# 1. Initialize training dataset from the 'train' split
-# 2. Initialize validation dataset from the 'val' split
-# 3. Create training DataLoader with shuffling enabled
-# 4. Create validation DataLoader without shuffling
-#
-# Args:
-#     args: Parsed command-line arguments
-#
-# Returns:
-#     Tuple of (train_loader, val_loader)
+print(f"[DEBUG] define function build_dataloaders()")
 def build_dataloaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader]:
-    # Step 1: Load training dataset
-    # This dataset will load images from data_dir/train/ and apply preprocessing
+    """
+    Create DataLoader objects for training and validation datasets.
+    
+    Steps:
+    1. Initialize training dataset from the 'train' split directory
+    2. Initialize validation dataset from the 'val' split directory
+    3. Create training DataLoader with shuffling enabled
+    4. Create validation DataLoader without shuffling
+    
+    Args:
+        args: Parsed command-line arguments
+    
+    Returns:
+        Tuple of (train_loader, val_loader)
+    """
+    # Step 1: Load training dataset from data_dir/train/{real,ai}
     train_dataset = AiImageDataset(data_dir=args.data_dir, split="train", model_name=MODEL_NAME)
     
-    # Step 2: Load validation dataset
-    # This dataset will load images from data_dir/val/ for evaluation
+    # Step 2: Load validation dataset from data_dir/val/{real,ai}
     val_dataset = AiImageDataset(data_dir=args.data_dir, split="val", model_name=MODEL_NAME)
 
     # Step 3: Create training DataLoader
@@ -117,24 +127,26 @@ def build_dataloaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader]
     )
     return train_loader, val_loader
 
-
-# Build and configure the ViT model for transfer learning.
-#
-# Steps:
-# 1. Load pre-trained ViT model from HuggingFace
-# 2. Freeze all base model parameters (prevent updating during training)
-# 3. Unfreeze only the classifier head parameters (allow fine-tuning)
-# 4. Move model to the appropriate device (GPU or CPU)
-#
-# This approach uses transfer learning: we keep the pre-trained feature extractor
-# frozen and only train the final classification layer for our specific task.
-#
-# Args:
-#     device: torch.device indicating where to run the model (cuda or cpu)
-#
-# Returns:
-#     Configured model ready for training
+print(f"[DEBUG] define function build_model()")
 def build_model(device: torch.device) -> AutoModelForImageClassification:
+    """
+    Build and configure the ViT model for transfer learning.
+    
+    Steps:
+    1. Load pre-trained ViT model from HuggingFace
+    2. Freeze all base model parameters (prevent updating during training)
+    3. Unfreeze only the classifier head parameters (allow fine-tuning)
+    4. Move model to the appropriate device (GPU or CPU)
+    
+    This approach uses transfer learning: we keep the pre-trained feature extractor
+    frozen and only train the final classification layer for our specific task.
+    
+    Args:
+        device: torch.device indicating where to run the model (cuda or cpu)
+    
+    Returns:
+        Configured model ready for training
+    """
     # Step 1: Load pre-trained ViT model with custom classification head
     model = AutoModelForImageClassification.from_pretrained(
         MODEL_NAME,                        # Pre-trained ViT-Large model
@@ -159,23 +171,26 @@ def build_model(device: torch.device) -> AutoModelForImageClassification:
     return model
 
 
-# Calculate performance metrics for an entire epoch.
-#
-# Steps:
-# 1. Concatenate all batch logits and labels into single arrays
-# 2. Convert logits to probabilities using softmax
-# 3. Get predictions by taking the class with highest probability
-# 4. Calculate accuracy (% correct predictions)
-# 5. Calculate F1 score (harmonic mean of precision and recall)
-# 6. Calculate AUC (area under ROC curve, measures class separation)
-#
-# Args:
-#     logits: List of raw model outputs from each batch
-#     labels: List of true labels from each batch
-#
-# Returns:
-#     Dictionary containing accuracy, f1, and auc metrics
+print(f"[DEBUG] define function compute_epoch_metrics()")
 def compute_epoch_metrics(logits: list[np.ndarray], labels: list[np.ndarray]) -> dict[str, float]:
+    """
+    Calculate performance metrics for an entire epoch.
+    
+    Steps:
+    1. Concatenate all batch logits and labels into single arrays
+    2. Convert logits to probabilities using softmax
+    3. Get predictions by taking the class with highest probability
+    4. Calculate accuracy (% correct predictions)
+    5. Calculate F1 score (harmonic mean of precision and recall)
+    6. Calculate AUC (area under ROC curve, measures class separation)
+    
+    Args:
+        logits: List of raw model outputs from each batch
+        labels: List of true labels from each batch
+    
+    Returns:
+        Dictionary containing accuracy, f1, and auc metrics
+    """
     # Step 1: Combine all batches into single arrays
     logits_array = np.concatenate(logits, axis=0)      # Shape: [total_samples, 2]
     labels_array = np.concatenate(labels, axis=0)      # Shape: [total_samples]
@@ -203,13 +218,14 @@ def compute_epoch_metrics(logits: list[np.ndarray], labels: list[np.ndarray]) ->
         metrics["auc"] = float("nan")
     return metrics
 
-
+print(f"[DEBUG] define function run_phase()")
 def run_phase(
     model: AutoModelForImageClassification,
     loader: DataLoader,
     optimizer: AdamW,
     device: torch.device,
     train: bool,
+    max_batches: int | None = None,
 ) -> dict[str, float]:
     """
     Execute one complete pass through the dataset (either training or validation).
@@ -231,6 +247,7 @@ def run_phase(
         optimizer: AdamW optimizer for updating weights
         device: Where to run computations (cuda or cpu)
         train: True for training mode, False for validation mode
+        max_batches: Optional maximum number of batches to process
     
     Returns:
         Dictionary of metrics including loss, accuracy, f1, and auc
@@ -241,11 +258,15 @@ def run_phase(
     
     # Step 2: Initialize accumulators
     total_loss = 0.0                      # Sum of all batch losses
+    total_examples = 0                    # Number of processed samples
     all_logits: list[np.ndarray] = []     # Store predictions from all batches
     all_labels: list[np.ndarray] = []     # Store true labels from all batches
 
     # Step 3: Process each batch
-    for batch in loader:
+    for batch_index, batch in enumerate(loader):
+        if max_batches is not None and batch_index >= max_batches:
+            break
+
         # Step 3a: Move batch data to GPU/CPU
         pixel_values = batch["pixel_values"].to(device)  # Image tensors
         labels = batch["labels"].to(device)              # Ground truth labels
@@ -271,20 +292,24 @@ def run_phase(
         # Step 3d: Accumulate results for metric calculation
         # Multiply loss by batch size to get total loss (not mean)
         total_loss += loss.item() * labels.size(0)
+        total_examples += labels.size(0)
         
         # Store predictions and labels (move to CPU and convert to numpy)
         all_logits.append(outputs.logits.detach().cpu().numpy())
         all_labels.append(labels.detach().cpu().numpy())
 
+    if total_examples == 0:
+        raise RuntimeError("No batches were processed. Increase --max-train-batches/--max-val-batches or check the dataset.")
+
     # Step 4: Calculate metrics across all batches
     metrics = compute_epoch_metrics(all_logits, all_labels)
     
     # Step 5: Calculate average loss per sample
-    metrics["loss"] = total_loss / len(loader.dataset)
+    metrics["loss"] = total_loss / total_examples
     
     return metrics
 
-
+print(f"[DEBUG] define function save_artifacts()")
 def save_artifacts(model: AutoModelForImageClassification, output_dir: Path, history: list[dict[str, float]]) -> None:
     """
     Save the trained model and training history to disk.
@@ -311,7 +336,7 @@ def save_artifacts(model: AutoModelForImageClassification, output_dir: Path, his
     history_path = output_dir / "history.json"
     history_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
 
-
+print(f"[DEBUG] define function main()")
 def main() -> None:
     """
     Main training pipeline orchestrating the entire process.
@@ -328,37 +353,86 @@ def main() -> None:
        c. Record and display metrics
     7. Save the trained model and training history
     """
+    print("[DEBUG] Starting main() function")
+    
     # Step 1: Parse command-line arguments for configuration
+    print("[DEBUG] Parsing command-line arguments...")
     args = parse_args()
+    print(f"[DEBUG] Arguments parsed: data_dir={args.data_dir}, epochs={args.epochs}, batch_size={args.batch_size}")
     
     # Step 2: Determine which device to use for training
     # CUDA (GPU) is preferred for faster training, fallback to CPU if unavailable
+    print("[DEBUG] Determining device...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    print(f"[DEBUG] Device set to: {device}")
 
     # Step 3: Build DataLoaders for efficient batch processing
-    train_loader, val_loader = build_dataloaders(args)
+    print("[DEBUG] Building data loaders...")
+    try:
+        train_loader, val_loader = build_dataloaders(args)
+        print(f"[DEBUG] Data loaders built successfully. Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
+    except Exception as e:
+        print(f"[DEBUG ERROR] Failed to build data loaders: {e}")
+        raise
     
     # Step 4: Build the model with frozen base and trainable classifier
-    model = build_model(device)
+    print("[DEBUG] Building model...")
+    try:
+        model = build_model(device)
+        print("[DEBUG] Model built successfully")
+    except Exception as e:
+        print(f"[DEBUG ERROR] Failed to build model: {e}")
+        raise
     
     # Step 5: Initialize AdamW optimizer
     # Only optimize parameters where requires_grad=True (i.e., the classifier head)
     # AdamW is Adam with weight decay regularization to prevent overfitting
+    print("[DEBUG] Initializing optimizer...")
     optimizer = AdamW(filter(lambda parameter: parameter.requires_grad, model.parameters()), lr=args.learning_rate)
+    print(f"[DEBUG] Optimizer initialized with lr={args.learning_rate}")
 
     # Initialize list to store metrics from each epoch
     history: list[dict[str, float]] = []
+    print("[DEBUG] Starting training loop...")
 
     # Step 6: Training loop - iterate through epochs
     for epoch in range(1, args.epochs + 1):
+        print(f"\n[DEBUG] === Starting epoch {epoch}/{args.epochs} ===")
+        
         # Step 6a: Training phase
         # Process all training batches, update weights, compute metrics
-        train_metrics = run_phase(model, train_loader, optimizer, device, train=True)
+        print(f"[DEBUG] Starting training phase for epoch {epoch}...")
+        try:
+            train_metrics = run_phase(
+                model,
+                train_loader,
+                optimizer,
+                device,
+                train=True,
+                max_batches=args.max_train_batches,
+            )
+            print(f"[DEBUG] Training phase completed for epoch {epoch}")
+        except Exception as e:
+            print(f"[DEBUG ERROR] Training phase failed at epoch {epoch}: {e}")
+            raise
         
         # Step 6b: Validation phase
         # Evaluate on validation set without updating weights
-        val_metrics = run_phase(model, val_loader, optimizer, device, train=False)
+        print(f"[DEBUG] Starting validation phase for epoch {epoch}...")
+        try:
+            val_metrics = run_phase(
+                model,
+                val_loader,
+                optimizer,
+                device,
+                train=False,
+                max_batches=args.max_val_batches,
+            )
+            print(f"[DEBUG] Validation phase completed for epoch {epoch}")
+        except Exception as e:
+            print(f"[DEBUG ERROR] Validation phase failed at epoch {epoch}: {e}")
+            raise
 
         # Step 6c: Record metrics for this epoch
         # Combine epoch number with all training and validation metrics
@@ -368,6 +442,7 @@ def main() -> None:
             **{f"val_{key}": value for key, value in val_metrics.items()},
         }
         history.append(epoch_metrics)
+        print(f"[DEBUG] Metrics recorded for epoch {epoch}")
 
         # Display progress with all metrics formatted to 4 decimal places
         print(
@@ -386,8 +461,17 @@ def main() -> None:
             )
         )
 
+    print("\n[DEBUG] Training loop completed")
     # Step 7: Save the trained model and metrics history
-    save_artifacts(model, args.output_dir, history)
+    print("[DEBUG] Saving artifacts...")
+    try:
+        save_artifacts(model, args.output_dir, history)
+        print(f"[DEBUG] Artifacts saved to {args.output_dir}")
+    except Exception as e:
+        print(f"[DEBUG ERROR] Failed to save artifacts: {e}")
+        raise
+    
+    print("[DEBUG] main() function completed successfully")
 
 
 if __name__ == "__main__":

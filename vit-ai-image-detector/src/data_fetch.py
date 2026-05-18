@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 LABELS = ("real", "ai")
 
 
