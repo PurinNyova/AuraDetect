@@ -21,6 +21,7 @@ import numpy as np
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 from transformers import AutoModelForImageClassification
 
 from dataset import AiImageDataset, LABEL_TO_ID
@@ -225,6 +226,7 @@ def run_phase(
     optimizer: AdamW,
     device: torch.device,
     train: bool,
+    phase_name: str,
     max_batches: int | None = None,
 ) -> dict[str, float]:
     """
@@ -262,8 +264,13 @@ def run_phase(
     all_logits: list[np.ndarray] = []     # Store predictions from all batches
     all_labels: list[np.ndarray] = []     # Store true labels from all batches
 
+    total_batches = len(loader)
+    if max_batches is not None:
+        total_batches = min(total_batches, max_batches)
+
     # Step 3: Process each batch
-    for batch_index, batch in enumerate(loader):
+    progress = tqdm(loader, total=total_batches, desc=phase_name, leave=False)
+    for batch_index, batch in enumerate(progress):
         if max_batches is not None and batch_index >= max_batches:
             break
 
@@ -293,6 +300,7 @@ def run_phase(
         # Multiply loss by batch size to get total loss (not mean)
         total_loss += loss.item() * labels.size(0)
         total_examples += labels.size(0)
+        progress.set_postfix(loss=f"{loss.item():.4f}")
         
         # Store predictions and labels (move to CPU and convert to numpy)
         all_logits.append(outputs.logits.detach().cpu().numpy())
@@ -410,6 +418,7 @@ def main() -> None:
                 optimizer,
                 device,
                 train=True,
+                phase_name=f"train {epoch}/{args.epochs}",
                 max_batches=args.max_train_batches,
             )
             print(f"[DEBUG] Training phase completed for epoch {epoch}")
@@ -427,6 +436,7 @@ def main() -> None:
                 optimizer,
                 device,
                 train=False,
+                phase_name=f"val {epoch}/{args.epochs}",
                 max_batches=args.max_val_batches,
             )
             print(f"[DEBUG] Validation phase completed for epoch {epoch}")

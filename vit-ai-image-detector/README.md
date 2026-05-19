@@ -98,6 +98,27 @@ Start fine-tuning:
 python src/train.py --epochs 3 --batch-size 8
 ```
 
+Run inference on one image or a whole folder:
+
+```powershell
+python src/infer.py .\data\dataset\val\ai\example.png --model-dir .\outputs\models\vit-full
+python src/infer.py .\data\dataset\val --model-dir .\outputs\models\vit-full --recursive --output-json .\outputs\predictions\val.json
+```
+
+Run the long-lived Flask inference API:
+
+```powershell
+python src/infer_api.py --model-dir .\outputs\models\vit-full --host 0.0.0.0 --port 5000
+```
+
+Send an image to the API:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:5000/ai-scan -F "image=@data\dataset\val\ai\example.png"
+```
+
+The API keeps the model loaded in memory and returns a JSON payload with the predicted `AI`/`Real` verdict, the top confidence value, and the per-label scores.
+
 ## Training Notes
 
 - The script uses `cuda` automatically when `torch.cuda.is_available()` is true.

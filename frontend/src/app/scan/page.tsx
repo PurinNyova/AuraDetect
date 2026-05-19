@@ -9,31 +9,177 @@ import {
   Heading,
   Text,
 } from "@chakra-ui/react";
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-
-const metrics = [
-  { label: "GAN Artifact Detection", value: 98, tone: "error" },
-  { label: "Diffusion Noise Pattern", value: 92, tone: "error" },
-  { label: "Human Feature Consistency", value: 15, tone: "success" },
-] as const;
+import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 
 type AppState = "idle" | "loading" | "results";
+
+type ScanResponse = {
+  confidence: number;
+  filename: string;
+  predicted_label: string;
+  scores: Record<string, number>;
+  verdict: string;
+};
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
+
+const getVerdictTone = (value: string) =>
+  value.trim().toLowerCase() === "real" ? "success" : "error";
+
+const isScanResponse = (value: unknown): value is ScanResponse => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    typeof candidate.confidence === "number" &&
+    typeof candidate.filename === "string" &&
+    typeof candidate.predicted_label === "string" &&
+    typeof candidate.verdict === "string" &&
+    !!candidate.scores &&
+    typeof candidate.scores === "object"
+  );
+};
 
 export default function ScanPage() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [isDragOver, setIsDragOver] = useState(false);
   const [animateProgress, setAnimateProgress] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [result, setResult] = useState<ScanResponse | null>(null);
   const timeoutIds = useRef<number[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const clearSimulationTimers = () => {
     timeoutIds.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
     timeoutIds.current = [];
   };
 
+  const replacePreview = (file: File) => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(file);
+    previewUrlRef.current = nextPreviewUrl;
+    setPreviewUrl(nextPreviewUrl);
+  };
+
+  const validateFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      return "Please upload an image file.";
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return "Images must be 10MB or smaller.";
+    }
+
+    return null;
+  };
+
+  const uploadFile = async (file: File) => {
+    const validationError = validateFile(file);
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      setAppState("idle");
+      return;
+    }
+
+    clearSimulationTimers();
+    replacePreview(file);
+    setErrorMessage(null);
+    setAnimateProgress(false);
+    setAppState("loading");
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      const response = await fetch("/scan/ai-scan", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | Record<string, unknown>
+        | null;
+
+      if (!response.ok) {
+        const nextError =
+          payload && "detail" in payload && typeof payload.detail === "string"
+            ? payload.detail
+            : payload && "message" in payload && typeof payload.message === "string"
+              ? payload.message
+              : "Scan failed. Please try again.";
+
+        throw new Error(nextError);
+      }
+
+      if (!isScanResponse(payload)) {
+        throw new Error("The scan response was incomplete.");
+      }
+
+      setResult({
+        confidence: payload.confidence,
+        filename: payload.filename,
+        predicted_label: payload.predicted_label,
+        scores: payload.scores,
+        verdict: payload.verdict,
+      });
+      setAppState("results");
+
+      timeoutIds.current.push(
+        window.setTimeout(() => {
+          setAnimateProgress(true);
+        }, 100),
+      );
+    } catch (error) {
+      setResult(null);
+      setAppState("idle");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Scan failed. Please try again.",
+      );
+    }
+  };
+
+  const handleFileSelection = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    await uploadFile(file);
+    event.target.value = "";
+  };
+
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+
+    const file = event.dataTransfer.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    await uploadFile(file);
+  };
+
   useEffect(() => {
     return () => {
       clearSimulationTimers();
+
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
     };
   }, []);
 
@@ -42,26 +188,43 @@ export default function ScanPage() {
     setAppState("idle");
     setAnimateProgress(false);
     setIsDragOver(false);
+    setErrorMessage(null);
+    setResult(null);
+
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+
+    setPreviewUrl(null);
   };
 
-  const simulateUpload = () => {
-    clearSimulationTimers();
-    setIsDragOver(false);
-    setAnimateProgress(false);
-    setAppState("loading");
+  const verdict = result?.verdict ?? result?.predicted_label ?? "Unknown";
+  const verdictTone = getVerdictTone(verdict);
+  const scoreMetrics = result
+    ? [
+        {
+          label: "AI score",
+          value: result.scores.Ai ?? result.scores.AI ?? 0,
+          tone: "error",
+        },
+        {
+          label: "Real score",
+          value: result.scores.Real ?? 0,
+          tone: "success",
+        },
+        {
+          label: "Model confidence",
+          value: result.confidence,
+          tone: verdictTone,
+        },
+      ]
+    : [];
 
-    timeoutIds.current.push(
-      window.setTimeout(() => {
-        setAppState("results");
-
-        timeoutIds.current.push(
-          window.setTimeout(() => {
-            setAnimateProgress(true);
-          }, 100),
-        );
-      }, 2000),
-    );
-  };
+  const placeholderRedirectToDashboard = () => {
+    // simple redirect to /dashboard with no fluff
+    window.location.href = "/dashboard";
+  }
 
   return (
     <Container maxW="1200px" px={{ base: "4", md: "6" }} py="8" mx="auto">
@@ -101,12 +264,16 @@ export default function ScanPage() {
               event.preventDefault();
               setIsDragOver(false);
             }}
-            onDrop={(event) => {
-              event.preventDefault();
-              simulateUpload();
-            }}
+            onDrop={handleDrop}
           >
-            <Box color="fg.muted" mb="4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={handleFileSelection}
+            />
+            <Box color="fg.muted" mb="4" display="inline-flex" alignItems="center" gap="2">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
               </svg>
@@ -130,10 +297,17 @@ export default function ScanPage() {
               transition="all 0.2s ease"
               _hover={{ bg: "brand.hover", transform: "translateY(-1px)" }}
               _active={{ transform: "translateY(0)" }}
-              onClick={simulateUpload}
+              onClick={() => {
+                fileInputRef.current?.click();
+              }}
             >
               Browse Files
             </Button>
+            {errorMessage ? (
+              <Text mt="4" color="status.error.text" fontSize="0.95rem">
+                {errorMessage}
+              </Text>
+            ) : null}
           </Box>
         ) : null}
 
@@ -152,10 +326,27 @@ export default function ScanPage() {
               mb="4"
             />
             <Text color="fg.muted">Running neural network analysis...</Text>
+            {previewUrl ? (
+              <Box mt="6">
+                <Text color="fg.subtle" fontSize="0.95rem" mb="4">
+                  Uploading {result?.filename ?? "selected image"}
+                </Text>
+                <img
+                  src={previewUrl}
+                  alt="Selected upload preview"
+                  style={{
+                    maxWidth: "320px",
+                    margin: "0 auto",
+                    borderRadius: "12px",
+                    border: "1px solid var(--chakra-colors-border-subtle)",
+                  }}
+                />
+              </Box>
+            ) : null}
           </Box>
         ) : null}
 
-        {appState === "results" ? (
+        {appState === "results" && result ? (
           <Box
             display="block"
             bg="bg.panel"
@@ -207,7 +398,7 @@ export default function ScanPage() {
                 p="8"
               >
                 <img
-                  src="https://images.unsplash.com/photo-1682687982501-1e5898cb8f4b?q=80&w=600&auto=format&fit=crop"
+                  src={previewUrl ?? undefined}
                   alt="Uploaded Preview"
                   style={{
                     maxWidth: "100%",
@@ -228,16 +419,22 @@ export default function ScanPage() {
                   fontWeight="700"
                   fontSize="1.25rem"
                   mb="8"
-                  bg="status.error.bg"
-                  color="status.error.text"
+                  bg={`status.${verdictTone}.bg`}
+                  color={`status.${verdictTone}.text`}
                   borderWidth="1px"
-                  borderColor="status.error.border"
+                  borderColor={`status.${verdictTone}.border`}
                 >
-                  <Text as="span">⚠️</Text>
-                  <Text as="span">94% AI Generated</Text>
+                  <Text as="span">{verdictTone === "success" ? "✓" : "!"}</Text>
+                  <Text as="span">
+                    {formatPercent(result.confidence)} {verdict}
+                  </Text>
                 </Flex>
 
-                {metrics.map((metric) => {
+                <Text color="fg.subtle" fontSize="0.95rem" mb="6">
+                  {result.filename}
+                </Text>
+
+                {scoreMetrics.map((metric) => {
                   const toneColor =
                     metric.tone === "success" ? "status.success.text" : "status.error.text";
 
@@ -250,14 +447,14 @@ export default function ScanPage() {
                         color="fg.subtle"
                       >
                         <Text>{metric.label}</Text>
-                        <Text>{metric.value}%</Text>
+                        <Text>{formatPercent(metric.value)}</Text>
                       </Flex>
                       <Box width="100%" height="8px" bg="bg.input" borderRadius="4px" overflow="hidden">
                         <Box
                           height="100%"
                           bg={toneColor}
                           transition="width 1s ease-out"
-                          width={animateProgress ? `${metric.value}%` : "0%"}
+                          width={animateProgress ? formatPercent(metric.value) : "0%"}
                         />
                       </Box>
                     </Box>
@@ -268,10 +465,28 @@ export default function ScanPage() {
                   <Text as="strong" color="fg.default">
                     System Notes:
                   </Text>{" "}
-                  High probability of synthetic generation detected. Prominent diffusion
-                  artifacts found in the background depth map, and irregular micro-textures
-                  observed.
+                  The model classified this upload as {result.predicted_label} with a
+                  confidence of {formatPercent(result.confidence)}. Compare the AI and Real
+                  score bars to gauge how decisive the classification was.
                 </Text>
+
+                <Button
+                  mt="10"
+                  bg="brand.primary"
+                  color="fg.inverted"
+                  px="6"
+                  py="4"
+                  borderRadius="action"
+                  fontWeight="600"
+                  fontSize="1.125rem"
+                  transition="all 0.2s ease"
+                  _hover={{ bg: "brand.hover", transform: "translateY(-1px)" }}
+                  _active={{ transform: "translateY(0)" }}
+                  onClick={placeholderRedirectToDashboard}
+                >
+                  Save To Dashboard
+                </Button>
+                
               </Box>
             </Grid>
           </Box>

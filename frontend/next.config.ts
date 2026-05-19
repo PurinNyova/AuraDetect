@@ -4,9 +4,13 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/:path*",
-        destination: "http://localh.ost:4444/api/v1/:path*",
+        source: "/scan/:path*",
+        destination: "http://localhost:5000/:path*",
       },
+      {
+        source: "/api/:path*",
+        destination: "http://localhost:3001/:path*",
+      }
     ];
   },
 };

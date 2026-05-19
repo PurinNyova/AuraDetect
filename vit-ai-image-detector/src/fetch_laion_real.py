@@ -74,6 +74,12 @@ def parse_args() -> argparse.Namespace:
         default=42,
         help="Shuffle seed for repeatable sampling.",
     )
+    parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Number of shuffled LAION records to skip before attempting downloads.",
+    )
     return parser.parse_args()
 
 
@@ -200,6 +206,22 @@ def write_manifest(dataset_dir: Path) -> Path:
     return manifest_path
 
 
+def apply_offset(stream: IterableDataset, offset: int) -> IterableDataset:
+    if offset <= 0:
+        return stream
+
+    iterator = iter(stream)
+    skipped = 0
+    while skipped < offset:
+        try:
+            next(iterator)
+        except StopIteration:
+            break
+        skipped += 1
+
+    return iterator
+
+
 def schedule_downloads(
     stream: IterableDataset,
     output_dir: Path,
@@ -246,6 +268,8 @@ def main() -> None:
         raise ValueError("--max-attempts must be greater than or equal to --limit.")
     if args.workers <= 0:
         raise ValueError("--workers must be greater than 0.")
+    if args.offset < 0:
+        raise ValueError("--offset must be greater than or equal to 0.")
 
     ensure_dataset_layout(args.dataset_dir)
     output_dir = args.dataset_dir / args.output_subdir
@@ -261,8 +285,11 @@ def main() -> None:
     print(f"Streaming shuffled LAION records from {DEFAULT_DATASET}...")
     print(f"Saving downloads to {output_dir}")
     print(f"Existing images: {existing_count}")
+    if args.offset:
+        print(f"Skipping the first {args.offset} shuffled LAION record(s).")
 
     stream = load_laion_stream(DEFAULT_DATASET, args.shuffle_buffer, args.seed)
+    stream = apply_offset(stream, args.offset)
     successful, attempts = schedule_downloads(
         stream=stream,
         output_dir=output_dir,
