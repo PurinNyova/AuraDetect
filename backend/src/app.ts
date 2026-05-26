@@ -43,8 +43,8 @@ app.get<object, MessageResponse>("/", (req, res) => {
   });
 });
 
-app.use("/api/v1", ensureDatabaseReady, api);
-app.use("/api/dashboard", ensureDatabaseReady, dashboard);
+app.use("/v1", ensureDatabaseReady, api);
+app.use("/v1/dashboard", ensureDatabaseReady, dashboard);
 app.use("/dashboard", ensureDatabaseReady, dashboard);
 
 app.use(middlewares.notFound);
