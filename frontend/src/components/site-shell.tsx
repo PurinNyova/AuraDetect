@@ -101,16 +101,17 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 										minW="auto"
 										bg="transparent"
 										color="fg.muted"
-										px="4"
-										py="2"
+										px="0"
+										py="0"
+										border="none"
 										borderRadius="control"
 										fontWeight="600"
-										fontSize="0.875rem"
+										fontSize="1rem"
 										transition="all 0.2s ease"
 										_hover={{ bg: "border.subtle", color: "fg.default" }}
 										_active={{ bg: "border.subtle" }}
 									>
-										Dashboard
+										<Box px="4" py="3">Dashboard</Box>
 									</Button>
 								</Link>
 							)
@@ -118,26 +119,20 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 						{!isLoading && isAuthenticated
 							? (
 									<>
-										{user?.name
-											? (
-													<Text fontSize="0.875rem" color="fg.muted" px="2">
-														{user.name}
-													</Text>
-												)
-											: null}
 										<Button
 											height="auto"
 											minW="auto"
-											bg="transparent"
-											color="fg.muted"
+											bg="brand.primary"
+											color="fg.onBrand"
 											px="4"
 											py="2"
 											borderRadius="control"
 											fontWeight="600"
 											fontSize="0.875rem"
 											transition="all 0.2s ease"
-											_hover={{ bg: "border.subtle", color: "fg.default" }}
-											_active={{ bg: "border.subtle" }}
+											_hover={{ bg: "brand.hover", transform: "translateY(-1px)" }}
+											_active={{ transform: "translateY(0)" }}
+											_disabled={{ opacity: 0.7, cursor: "not-allowed" }}
 											disabled={isLoggingOut}
 											onClick={() => {
 												void handleLogout();
@@ -160,31 +155,13 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 											fontWeight="600"
 											fontSize="0.875rem"
 											transition="all 0.2s ease"
-											_hover={{ bg: "border.subtle", color: "fg.default" }}
-											_active={{ bg: "border.subtle" }}
+											_hover={{ bg: "brand.hover", transform: "translateY(-1px)" }}
+											_active={{ transform: "translateY(0)" }}
 										>
 											Log In
 										</Button>
 									</Link>
 								)}
-						<Link href="/scan" style={{ textDecoration: "none" }}>
-							<Button
-								height="auto"
-								minW="auto"
-								bg="brand.primary"
-								color="#1A1419"
-								px="4"
-								py="2"
-								borderRadius="control"
-								fontWeight="600"
-								fontSize="0.875rem"
-								transition="all 0.2s ease"
-								_hover={{ bg: "brand.hover", transform: "translateY(-1px)" }}
-								_active={{ transform: "translateY(0)" }}
-							>
-								Launch App
-							</Button>
-						</Link>
 					</HStack>
 				</Flex>
 			</Box>

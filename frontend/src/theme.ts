@@ -79,6 +79,12 @@ const config = defineConfig({
 							_light: "#231728",
 						},
 					},
+					onBrand: {
+						value: {
+							_dark: "#1A1419",
+							_light: "#1A1419",
+						},
+					},
 					muted: {
 						value: {
 							_dark: "#7A6483",

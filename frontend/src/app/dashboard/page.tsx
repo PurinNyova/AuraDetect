@@ -149,11 +149,8 @@ export default function DashboardPage() {
 				<Flex justify="space-between" align={{ base: "flex-start", md: "center" }} direction={{ base: "column", md: "row" }} gap="4">
 					<Box>
 						<Heading as="h2" fontSize={{ base: "1.8rem", md: "2.2rem" }}>
-							Keep an eye on your latest scans and confidence trends.
+							Your scan overview.
 						</Heading>
-						<Text color="fg.muted" mt="3" maxW="3xl">
-							Jump into dedicated history and settings views without leaving your dashboard.
-						</Text>
 					</Box>
 
 					<Link href="/scan" style={{ textDecoration: "none" }}>
