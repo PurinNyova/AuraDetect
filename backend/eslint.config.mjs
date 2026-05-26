@@ -26,5 +26,6 @@ export default antfu({
       ignore: ["README.md"],
     }],
     "test/prefer-lowercase-title": ["off"],
+    "no-restricted-syntax": ["error", "ForInStatement", "LabeledStatement", "WithStatement"],
   },
 });
