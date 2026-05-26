@@ -8,12 +8,18 @@ import {
 	Text,
 } from "@chakra-ui/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+import { useAuth } from "@/app/hooks/auth-context";
 
 type ThemeMode = "dark" | "light";
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
 	const [theme, setTheme] = useState<ThemeMode>("dark");
+	const [isLoggingOut, setIsLoggingOut] = useState(false);
+	const router = useRouter();
+	const { isAuthenticated, isLoading, logout, user } = useAuth();
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -22,6 +28,18 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 		root.classList.remove("dark", "light");
 		root.classList.add(theme);
 	}, [theme]);
+
+	const handleLogout = async () => {
+		setIsLoggingOut(true);
+
+		try {
+			await logout();
+			router.push("/");
+		}
+		finally {
+			setIsLoggingOut(false);
+		}
+	};
 
 	return (
 		<Box minH="100vh" bg="bg.app" color="fg.default">
@@ -75,24 +93,80 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
 						>
 							<Box px="4" py="3">Toggle Theme</Box>
 						</Button>
-						<Link href="/dashboard" style={{ textDecoration: "none" }}>
-							<Button
-								height="auto"
-								minW="auto"
-								bg="transparent"
-								color="fg.muted"
-								px="4"
-								py="2"
-								borderRadius="control"
-								fontWeight="600"
-								fontSize="0.875rem"
-								transition="all 0.2s ease"
-								_hover={{ bg: "border.subtle", color: "fg.default" }}
-								_active={{ bg: "border.subtle" }}
-							>
-								Dashboard
-							</Button>
-						</Link>
+						{!isLoading && isAuthenticated
+							? (
+								<Link href="/dashboard" style={{ textDecoration: "none" }}>
+									<Button
+										height="auto"
+										minW="auto"
+										bg="transparent"
+										color="fg.muted"
+										px="4"
+										py="2"
+										borderRadius="control"
+										fontWeight="600"
+										fontSize="0.875rem"
+										transition="all 0.2s ease"
+										_hover={{ bg: "border.subtle", color: "fg.default" }}
+										_active={{ bg: "border.subtle" }}
+									>
+										Dashboard
+									</Button>
+								</Link>
+							)
+							: null}
+						{!isLoading && isAuthenticated
+							? (
+									<>
+										{user?.name
+											? (
+													<Text fontSize="0.875rem" color="fg.muted" px="2">
+														{user.name}
+													</Text>
+												)
+											: null}
+										<Button
+											height="auto"
+											minW="auto"
+											bg="transparent"
+											color="fg.muted"
+											px="4"
+											py="2"
+											borderRadius="control"
+											fontWeight="600"
+											fontSize="0.875rem"
+											transition="all 0.2s ease"
+											_hover={{ bg: "border.subtle", color: "fg.default" }}
+											_active={{ bg: "border.subtle" }}
+											disabled={isLoggingOut}
+											onClick={() => {
+												void handleLogout();
+											}}
+										>
+											{isLoggingOut ? "Signing out..." : "Sign Out"}
+										</Button>
+									</>
+								)
+							: (
+									<Link href="/login" style={{ textDecoration: "none" }}>
+										<Button
+											height="auto"
+											minW="auto"
+											bg="transparent"
+											color="fg.muted"
+											px="4"
+											py="2"
+											borderRadius="control"
+											fontWeight="600"
+											fontSize="0.875rem"
+											transition="all 0.2s ease"
+											_hover={{ bg: "border.subtle", color: "fg.default" }}
+											_active={{ bg: "border.subtle" }}
+										>
+											Log In
+										</Button>
+									</Link>
+								)}
 						<Link href="/scan" style={{ textDecoration: "none" }}>
 							<Button
 								height="auto"

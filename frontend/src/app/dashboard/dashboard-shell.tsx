@@ -1,5 +1,11 @@
+"use client";
+
 import { Box, Container, Grid, Heading, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+
+import { useAuth } from "@/app/hooks/auth-context";
 
 const navigationItems = [
 	{
@@ -29,6 +35,31 @@ export function DashboardShell({
 	heading = "Welcome back",
 	kicker = "Dashboard",
 }: DashboardShellProps) {
+	const pathname = usePathname();
+	const router = useRouter();
+	const { isAuthenticated, isLoading } = useAuth();
+
+	useEffect(() => {
+		if (isLoading || isAuthenticated) {
+			return;
+		}
+
+		const nextTarget = pathname || "/dashboard";
+		router.replace(`/login?redirect=${encodeURIComponent(nextTarget)}`);
+	}, [isAuthenticated, isLoading, pathname, router]);
+
+	if (isLoading || !isAuthenticated) {
+		return (
+			<Container maxW="1200px" px={{ base: "4", md: "6" }} py={{ base: "8", md: "10" }}>
+				<Box bg="bg.panel" borderWidth="1px" borderColor="border.subtle" borderRadius="panel" p="6">
+					<Text color="fg.muted" fontWeight="600">
+						Checking your session...
+					</Text>
+				</Box>
+			</Container>
+		);
+	}
+
 	return (
 		<Container maxW="1400px" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }}>
 			<Grid templateColumns={{ base: "1fr", lg: "280px minmax(0, 1fr)" }} gap={{ base: "6", lg: "8" }}>
