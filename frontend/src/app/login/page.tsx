@@ -79,7 +79,16 @@ export default function LoginPage() {
 
 	if (isLoading) {
 		return (
-			<Container maxW="lg" px="4" py="10">
+			<Container
+				maxW="lg"
+				minH="calc(100vh - 73px)"
+				display="flex"
+				alignItems="center"
+				justifyContent="center"
+				px="4"
+				py="10"
+				mx="auto"
+			>
 				<Box bg="bg.panel" borderWidth="1px" borderColor="border.subtle" borderRadius="panel" p="6">
 					<Text color="fg.muted">Checking your session...</Text>
 				</Box>
@@ -88,10 +97,19 @@ export default function LoginPage() {
 	}
 
 	return (
-		<Container maxW="lg" px="4" py={{ base: "10", md: "16" }}>
-			<VStack gap="6" align="stretch">
+		<Container
+			maxW="lg"
+			minH="calc(100vh - 73px)"
+			display="flex"
+			alignItems="center"
+			justifyContent="center"
+			px="4"
+			py={{ base: "10", md: "16" }}
+			mx="auto"
+		>
+			<VStack gap="6" align="stretch" w="100%">
 				<Box>
-					<Heading as="h1" fontSize={{ base: "2rem", md: "2.5rem" }}>
+					<Heading as="h1" fontSize={{ base: "2rem", md: "2.5rem" }} lineHeight="1.2">
 						Access AuraDetect Dashboard
 					</Heading>
 					<Text color="fg.muted" mt="3">
