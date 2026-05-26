@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Sequelize } from "sequelize";
 
 import { env } from "./env.js";
+import { initializeDashboardModels } from "./models/dashboard.js";
 import { initializeUserModel } from "./models/user.js";
 
 const storage = env.NODE_ENV === "test" ? ":memory:" : env.DB_STORAGE;
@@ -18,6 +19,7 @@ let initializePromise: Promise<void> | undefined;
 export function initializeDatabase() {
   if (!sequelize.models.User) {
     initializeUserModel(sequelize);
+    initializeDashboardModels(sequelize);
   }
 
   if (!initializePromise) {

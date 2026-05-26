@@ -3,20 +3,27 @@ import express from "express";
 import session from "express-session";
 import helmet from "helmet";
 import morgan from "morgan";
+import swaggerUi from "swagger-ui-express";
 
 import type MessageResponse from "./interfaces/message-response.js";
 
+import dashboard from "./api/dashboard.js";
 import api from "./api/index.js";
 import { ensureDatabaseReady } from "./db.js";
-import * as middlewares from "./middlewares.js";
 import { env } from "./env.js";
+import * as middlewares from "./middlewares.js";
+import { openApiDocument } from "./openapi.js";
 
 const app = express();
 
 app.use(morgan("dev"));
+app.get("/docs/openapi.json", (req, res) => {
+  res.json(openApiDocument);
+});
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
 app.use(session({
   cookie: {
     httpOnly: true,
@@ -37,6 +44,8 @@ app.get<object, MessageResponse>("/", (req, res) => {
 });
 
 app.use("/api/v1", ensureDatabaseReady, api);
+app.use("/api/dashboard", ensureDatabaseReady, dashboard);
+app.use("/dashboard", ensureDatabaseReady, dashboard);
 
 app.use(middlewares.notFound);
 app.use(middlewares.errorHandler);

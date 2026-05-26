@@ -1,10 +1,11 @@
+import type { CreationOptional, InferAttributes, InferCreationAttributes, Sequelize } from "sequelize";
+
 import {
+
   DataTypes,
+
   Model,
-  type CreationOptional,
-  type InferAttributes,
-  type InferCreationAttributes,
-  type Sequelize,
+
 } from "sequelize";
 
 export class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
@@ -12,6 +13,9 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare email: string;
   declare name: string;
   declare passwordHash: string;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
+  declare lastLoginAt: Date | null;
 }
 
 export function initializeUserModel(sequelize: Sequelize) {
@@ -29,6 +33,16 @@ export function initializeUserModel(sequelize: Sequelize) {
       primaryKey: true,
       type: DataTypes.INTEGER,
     },
+    createdAt: {
+      allowNull: false,
+      field: "created_at",
+      type: DataTypes.DATE,
+    },
+    lastLoginAt: {
+      allowNull: true,
+      field: "last_login_at",
+      type: DataTypes.DATE,
+    },
     name: {
       allowNull: false,
       type: DataTypes.STRING,
@@ -36,6 +50,11 @@ export function initializeUserModel(sequelize: Sequelize) {
     passwordHash: {
       allowNull: false,
       type: DataTypes.STRING,
+    },
+    updatedAt: {
+      allowNull: false,
+      field: "updated_at",
+      type: DataTypes.DATE,
     },
   }, {
     modelName: "User",

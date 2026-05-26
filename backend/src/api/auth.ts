@@ -63,6 +63,8 @@ router.post("/login", async (req, res, next) => {
       throw new Error("Invalid email or password.");
     }
 
+    await user.update({ lastLoginAt: new Date() });
+
     req.session.userId = user.id;
 
     res.json({

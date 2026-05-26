@@ -3,6 +3,7 @@ import express from "express";
 import type MessageResponse from "../interfaces/message-response.js";
 
 import auth from "./auth.js";
+import dashboard from "./dashboard.js";
 import emojis from "./emojis.js";
 
 const router = express.Router();
@@ -14,6 +15,7 @@ router.get<object, MessageResponse>("/", (req, res) => {
 });
 
 router.use("/auth", auth);
+router.use("/dashboard", dashboard);
 router.use("/emojis", emojis);
 
 export default router;
