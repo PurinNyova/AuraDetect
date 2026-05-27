@@ -7,6 +7,7 @@ from typing import Any
 import albumentations as A
 import numpy as np
 from PIL import Image
+import torch
 from torch.utils.data import Dataset
 from transformers import ViTImageProcessor
 
@@ -82,9 +83,11 @@ class AiImageDataset(Dataset):
         data_dir: str | Path = "data/dataset",
         split: str = "train",
         model_name: str = "google/vit-large-patch16-384",
+        cache_processed: bool = False,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.split = split
+        self.cache_processed = cache_processed
         self.processor = ViTImageProcessor.from_pretrained(model_name)
         image_size = self.processor.size["height"] if isinstance(self.processor.size, dict) else 384
 
@@ -92,19 +95,33 @@ class AiImageDataset(Dataset):
         self.transform = (
             build_augmentation_pipeline(image_size) if split == "train" else build_eval_pipeline(image_size)
         )
+        self._cache: dict[int, dict[str, Any]] = {}
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
+        if self.cache_processed and index in self._cache:
+            return self._cache[index]
+
         sample = self.samples[index]
         image = Image.open(sample.path).convert("RGB")
         image_array = np.array(image)
         transformed = self.transform(image=image_array)
         processed = self.processor(images=transformed["image"], return_tensors="pt")
 
-        return {
+        item = {
             "pixel_values": processed["pixel_values"].squeeze(0),
             "labels": sample.label,
             "path": str(sample.path),
         }
+
+        if self.cache_processed:
+            # Validation/eval transforms are deterministic, so this avoids repeated CPU preprocessing.
+            self._cache[index] = {
+                "pixel_values": item["pixel_values"].detach().clone(),
+                "labels": item["labels"],
+                "path": item["path"],
+            }
+
+        return item
