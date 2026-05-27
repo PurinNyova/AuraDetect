@@ -26,4 +26,34 @@ def parse_args() -> argparse.Namespace:
         dest="cache_val_preprocessing",
         help="Disable validation preprocessing cache if memory usage is too high.",
     )
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable Weights & Biases experiment tracking.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default="aura-vit",
+        help="Weights & Biases project name.",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=None,
+        help="Optional Weights & Biases entity (team or username).",
+    )
+    parser.add_argument(
+        "--wandb-run-name",
+        type=str,
+        default=None,
+        help="Optional Weights & Biases run name.",
+    )
+    parser.add_argument(
+        "--wandb-mode",
+        type=str,
+        choices=("online", "offline", "disabled"),
+        default="online",
+        help="Weights & Biases mode.",
+    )
     return parser.parse_args()
