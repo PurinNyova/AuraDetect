@@ -98,6 +98,14 @@ Start fine-tuning:
 python src/train.py --epochs 3 --batch-size 8
 ```
 
+Training now writes rolling checkpoints to `outputs/models/checkpoints/` by default. Resume from the latest checkpoint with:
+
+```powershell
+python src/train.py --epochs 6 --resume-from .\outputs\models\checkpoints\latest.pt
+```
+
+Use `--checkpoint-dir` to change the location or `--checkpoint-every 0` to disable periodic checkpoint saves.
+
 Run inference on one image or a whole folder:
 
 ```powershell

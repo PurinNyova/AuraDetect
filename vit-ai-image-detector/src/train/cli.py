@@ -8,6 +8,24 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine-tune ViT on AI vs real images.")
     parser.add_argument("--data-dir", type=Path, default=Path("data/dataset"))
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/models"))
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        default=None,
+        help="Directory for training checkpoints. Defaults to <output-dir>/checkpoints.",
+    )
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help="Resume training from a checkpoint file created by this script.",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=1,
+        help="Save a checkpoint every N epochs. Use 0 to disable periodic checkpoints.",
+    )
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
@@ -56,4 +74,12 @@ def parse_args() -> argparse.Namespace:
         default="online",
         help="Weights & Biases mode.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.checkpoint_every < 0:
+        parser.error("--checkpoint-every must be 0 or greater.")
+
+    if args.checkpoint_dir is None:
+        args.checkpoint_dir = args.output_dir / "checkpoints"
+
+    return args

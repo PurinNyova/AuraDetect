@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import torch
 from torch.optim import AdamW
@@ -18,6 +20,7 @@ def run_phase(
     train: bool,
     phase_name: str,
     max_batches: int | None = None,
+    step_log_fn: Callable[[dict[str, float | int]], None] | None = None,
 ) -> dict[str, float]:
     model.train(mode=train)
 
@@ -52,6 +55,16 @@ def run_phase(
         progress.set_postfix(loss=f"{loss.item():.4f}")
         all_logits.append(outputs.logits.detach().cpu().numpy())
         all_labels.append(labels.detach().cpu().numpy())
+
+        if step_log_fn is not None:
+            step_payload: dict[str, float | int] = {
+                "batch": batch_index + 1,
+                "batch_size": int(labels.size(0)),
+                "batch_loss": float(loss.item()),
+            }
+            if train:
+                step_payload["learning_rate"] = float(optimizer.param_groups[0]["lr"])
+            step_log_fn(step_payload)
 
     if total_examples == 0:
         raise RuntimeError("No batches were processed. Increase --max-train-batches/--max-val-batches or check the dataset.")

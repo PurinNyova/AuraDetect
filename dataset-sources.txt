@@ -1,0 +1,13 @@
+Ai:
+https://huggingface.co/datasets/lrzjason/ZImageTurboGen
+https://github.com/apple/pico-banana-400k
+https://huggingface.co/datasets/Yejy53/Nano-consistent-150k
+https://civitai.com/models/631007/dataset-with-6000-flux1-dev-images-1024x768-and-768x1024
+https://www.kaggle.com/datasets/factfry/15k-ai-nonai-images
+
+
+Real:
+https://huggingface.co/datasets/jp1924/Laion400m-2
+https://huggingface.co/datasets/laion/laion2B-en-aesthetic
+https://www.kaggle.com/datasets/factfry/15k-ai-nonai-images
+https://www.kaggle.com/datasets/patzold/screenshots-dataset

@@ -17,14 +17,19 @@ from data_fetch import build_manifest, ensure_dataset_layout
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
-DEFAULT_DATASET = "laion/laion400m"
-DEFAULT_OUTPUT_SUBDIR = Path("real") / "laion-400m"
+DEFAULT_DATASET = "laion/laion2B-en-aesthetic"
+DEFAULT_OUTPUT_SUBDIR = Path("real") / "laion-5b"
 USER_AGENT = "AuraDetect-LAION-Downloader/1.0"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Download roughly 10,000 real images from LAION-400M into data/dataset/real/."
+        description="Download roughly 10,000 real images from a LAION-5B-derived stream into data/dataset/real/."
+    )
+    parser.add_argument(
+        "--dataset-name",
+        default=DEFAULT_DATASET,
+        help="Hugging Face dataset identifier to stream metadata from.",
     )
     parser.add_argument(
         "--dataset-dir",
@@ -79,6 +84,30 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Number of shuffled LAION records to skip before attempting downloads.",
+    )
+    parser.add_argument(
+        "--min-width",
+        type=int,
+        default=0,
+        help="Reject images narrower than this many pixels.",
+    )
+    parser.add_argument(
+        "--min-height",
+        type=int,
+        default=0,
+        help="Reject images shorter than this many pixels.",
+    )
+    parser.add_argument(
+        "--max-width",
+        type=int,
+        default=None,
+        help="Reject images wider than this many pixels.",
+    )
+    parser.add_argument(
+        "--max-height",
+        type=int,
+        default=None,
+        help="Reject images taller than this many pixels.",
     )
     return parser.parse_args()
 
@@ -147,7 +176,32 @@ def resolve_save_format(image_path: Path) -> str | None:
     return None
 
 
-def download_record(record: dict[str, Any], output_dir: Path, timeout: float) -> bool:
+def matches_resolution(
+    image: Image.Image,
+    min_width: int,
+    min_height: int,
+    max_width: int | None,
+    max_height: int | None,
+) -> bool:
+    width, height = image.size
+    if width < min_width or height < min_height:
+        return False
+    if max_width is not None and width > max_width:
+        return False
+    if max_height is not None and height > max_height:
+        return False
+    return True
+
+
+def download_record(
+    record: dict[str, Any],
+    output_dir: Path,
+    timeout: float,
+    min_width: int,
+    min_height: int,
+    max_width: int | None,
+    max_height: int | None,
+) -> bool:
     url = extract_url(record)
     if not url:
         return False
@@ -168,6 +222,10 @@ def download_record(record: dict[str, Any], output_dir: Path, timeout: float) ->
         payload = response.content
         image = Image.open(BytesIO(payload))
         image.load()
+
+        if not matches_resolution(image, min_width, min_height, max_width, max_height):
+            return False
+
         image_path, metadata_path = build_output_paths(output_dir, url, image)
 
         if image_path.exists():
@@ -230,6 +288,10 @@ def schedule_downloads(
     max_attempts: int,
     workers: int,
     timeout: float,
+    min_width: int,
+    min_height: int,
+    max_width: int | None,
+    max_height: int | None,
 ) -> tuple[int, int]:
     successful = existing_count
     attempts = 0
@@ -245,7 +307,18 @@ def schedule_downloads(
                     break
 
                 attempts += 1
-                pending.add(executor.submit(download_record, record, output_dir, timeout))
+                pending.add(
+                    executor.submit(
+                        download_record,
+                        record,
+                        output_dir,
+                        timeout,
+                        min_width,
+                        min_height,
+                        max_width,
+                        max_height,
+                    )
+                )
 
             if not pending:
                 break
@@ -270,6 +343,18 @@ def main() -> None:
         raise ValueError("--workers must be greater than 0.")
     if args.offset < 0:
         raise ValueError("--offset must be greater than or equal to 0.")
+    if args.min_width < 0:
+        raise ValueError("--min-width must be greater than or equal to 0.")
+    if args.min_height < 0:
+        raise ValueError("--min-height must be greater than or equal to 0.")
+    if args.max_width is not None and args.max_width <= 0:
+        raise ValueError("--max-width must be greater than 0 when provided.")
+    if args.max_height is not None and args.max_height <= 0:
+        raise ValueError("--max-height must be greater than 0 when provided.")
+    if args.max_width is not None and args.max_width < args.min_width:
+        raise ValueError("--max-width must be greater than or equal to --min-width.")
+    if args.max_height is not None and args.max_height < args.min_height:
+        raise ValueError("--max-height must be greater than or equal to --min-height.")
 
     ensure_dataset_layout(args.dataset_dir)
     output_dir = args.dataset_dir / args.output_subdir
@@ -282,13 +367,19 @@ def main() -> None:
         print(f"Target already satisfied; refreshed manifest at {manifest_path}.")
         return
 
-    print(f"Streaming shuffled LAION records from {DEFAULT_DATASET}...")
+    print(f"Streaming shuffled LAION records from {args.dataset_name}...")
     print(f"Saving downloads to {output_dir}")
     print(f"Existing images: {existing_count}")
     if args.offset:
         print(f"Skipping the first {args.offset} shuffled LAION record(s).")
+    if args.min_width or args.min_height or args.max_width is not None or args.max_height is not None:
+        print(
+            "Resolution filter: "
+            f"min={args.min_width}x{args.min_height}, "
+            f"max={args.max_width or 'unbounded'}x{args.max_height or 'unbounded'}"
+        )
 
-    stream = load_laion_stream(DEFAULT_DATASET, args.shuffle_buffer, args.seed)
+    stream = load_laion_stream(args.dataset_name, args.shuffle_buffer, args.seed)
     stream = apply_offset(stream, args.offset)
     successful, attempts = schedule_downloads(
         stream=stream,
@@ -298,6 +389,10 @@ def main() -> None:
         max_attempts=args.max_attempts,
         workers=args.workers,
         timeout=args.timeout,
+        min_width=args.min_width,
+        min_height=args.min_height,
+        max_width=args.max_width,
+        max_height=args.max_height,
     )
 
     manifest_path = write_manifest(args.dataset_dir)

@@ -6,7 +6,7 @@ from typing import Any
 
 import albumentations as A
 import numpy as np
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import torch
 from torch.utils.data import Dataset
 from transformers import ViTImageProcessor
@@ -56,19 +56,35 @@ def get_split_root(data_dir: Path, split: str) -> Path:
     raise FileNotFoundError(f"Expected split directory at {split_root}.")
 
 
+def is_readable_image(path: Path) -> bool:
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        return True
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False
+
+
 def discover_samples(data_dir: Path, split: str) -> list[ImageSample]:
     image_root = get_split_root(data_dir, split)
     if not image_root.exists():
         raise FileNotFoundError(f"Expected dataset at {image_root}. Run 'python src/data_fetch.py' first.")
 
     samples: list[ImageSample] = []
+    skipped_corrupt_files = 0
     for label_name, label_id in LABEL_TO_ID.items():
         label_dir = image_root / label_name
         if not label_dir.exists():
             continue
         for path in sorted(label_dir.rglob("*")):
             if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
-                samples.append(ImageSample(path=path, label=label_id))
+                if is_readable_image(path):
+                    samples.append(ImageSample(path=path, label=label_id))
+                else:
+                    skipped_corrupt_files += 1
+
+    if skipped_corrupt_files > 0:
+        print(f"[{split}] Skipped {skipped_corrupt_files} unreadable image file(s).")
 
     if not samples:
         raise RuntimeError(
@@ -96,6 +112,7 @@ class AiImageDataset(Dataset):
             build_augmentation_pipeline(image_size) if split == "train" else build_eval_pipeline(image_size)
         )
         self._cache: dict[int, dict[str, Any]] = {}
+        self._warned_bad_paths: set[Path] = set()
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -104,24 +121,41 @@ class AiImageDataset(Dataset):
         if self.cache_processed and index in self._cache:
             return self._cache[index]
 
-        sample = self.samples[index]
-        image = Image.open(sample.path).convert("RGB")
-        image_array = np.array(image)
-        transformed = self.transform(image=image_array)
-        processed = self.processor(images=transformed["image"], return_tensors="pt")
+        max_attempts = len(self.samples)
+        current_index = index
 
-        item = {
-            "pixel_values": processed["pixel_values"].squeeze(0),
-            "labels": sample.label,
-            "path": str(sample.path),
-        }
+        for _ in range(max_attempts):
+            sample = self.samples[current_index]
+            try:
+                with Image.open(sample.path) as image:
+                    image_array = np.array(image.convert("RGB"))
+            except (UnidentifiedImageError, OSError, ValueError):
+                if sample.path not in self._warned_bad_paths:
+                    self._warned_bad_paths.add(sample.path)
+                    print(f"[{self.split}] Skipping unreadable image: {sample.path}")
+                current_index = (current_index + 1) % max_attempts
+                continue
 
-        if self.cache_processed:
-            # Validation/eval transforms are deterministic, so this avoids repeated CPU preprocessing.
-            self._cache[index] = {
-                "pixel_values": item["pixel_values"].detach().clone(),
-                "labels": item["labels"],
-                "path": item["path"],
+            transformed = self.transform(image=image_array)
+            processed = self.processor(images=transformed["image"], return_tensors="pt")
+
+            item = {
+                "pixel_values": processed["pixel_values"].squeeze(0),
+                "labels": sample.label,
+                "path": str(sample.path),
             }
 
-        return item
+            if self.cache_processed:
+                # Validation/eval transforms are deterministic, so this avoids repeated CPU preprocessing.
+                self._cache[index] = {
+                    "pixel_values": item["pixel_values"].detach().clone(),
+                    "labels": item["labels"],
+                    "path": item["path"],
+                }
+
+            return item
+
+        raise RuntimeError(
+            f"All images reachable from index {index} in split '{self.split}' failed to load. "
+            "Check dataset integrity."
+        )

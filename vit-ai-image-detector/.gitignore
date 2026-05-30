@@ -12,3 +12,5 @@ outputs/models/*.safetensors
 outputs/models/*.json
 /outputs/*
 *.tar.gz
+/wandb
+/.kaggle-temp
