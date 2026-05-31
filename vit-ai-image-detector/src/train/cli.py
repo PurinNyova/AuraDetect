@@ -29,6 +29,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=0,
+        help="Number of optimizer steps used to linearly warm up the learning rate.",
+    )
+    parser.add_argument(
+        "--cosine-decay-strength",
+        type=float,
+        default=1.0,
+        help="How much of the base learning rate to decay over cosine schedule. 1.0 decays to 0, 0.5 decays to 50%% of base LR.",
+    )
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--max-train-batches", type=int, default=None)
     parser.add_argument("--max-val-batches", type=int, default=None)
@@ -78,6 +90,12 @@ def parse_args() -> argparse.Namespace:
 
     if args.checkpoint_every < 0:
         parser.error("--checkpoint-every must be 0 or greater.")
+
+    if args.warmup_steps < 0:
+        parser.error("--warmup-steps must be 0 or greater.")
+
+    if not 0.0 <= args.cosine_decay_strength <= 1.0:
+        parser.error("--cosine-decay-strength must be between 0.0 and 1.0.")
 
     if args.checkpoint_dir is None:
         args.checkpoint_dir = args.output_dir / "checkpoints"

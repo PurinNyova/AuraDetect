@@ -1,16 +1,40 @@
 from __future__ import annotations
 
 import argparse
+import math
 
 from .artifacts import load_checkpoint, save_artifacts, save_checkpoint
 
 import torch
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 
 from .cli import parse_args
 from .data import build_dataloaders
 from .engine import run_phase
 from .model import build_model
+
+
+def build_scheduler(optimizer: AdamW, total_training_steps: int, warmup_steps: int, cosine_decay_strength: float) -> LambdaLR | None:
+    if total_training_steps <= 0:
+        return None
+
+    warmup_steps = min(warmup_steps, total_training_steps)
+    decay_steps = max(total_training_steps - warmup_steps, 1)
+
+    def lr_lambda(current_step: int) -> float:
+        if warmup_steps > 0 and current_step < warmup_steps:
+            return float(current_step + 1) / float(warmup_steps)
+
+        if cosine_decay_strength <= 0.0:
+            return 1.0
+
+        decay_progress = min(max(current_step - warmup_steps, 0), decay_steps) / decay_steps
+        cosine_value = 0.5 * (1.0 + math.cos(math.pi * decay_progress))
+        min_lr_scale = 1.0 - cosine_decay_strength
+        return min_lr_scale + cosine_decay_strength * cosine_value
+
+    return LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 
 def maybe_init_wandb(args: argparse.Namespace):
@@ -33,6 +57,8 @@ def maybe_init_wandb(args: argparse.Namespace):
             "epochs": args.epochs,
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
+            "warmup_steps": args.warmup_steps,
+            "cosine_decay_strength": args.cosine_decay_strength,
             "num_workers": args.num_workers,
             "cache_val_preprocessing": args.cache_val_preprocessing,
             "data_dir": str(args.data_dir),
@@ -79,13 +105,28 @@ def main() -> None:
     train_loader, val_loader = build_dataloaders(args)
     model = build_model(device)
     optimizer = AdamW(filter(lambda parameter: parameter.requires_grad, model.parameters()), lr=args.learning_rate)
+    steps_per_epoch = len(train_loader)
+    if args.max_train_batches is not None:
+        steps_per_epoch = min(steps_per_epoch, args.max_train_batches)
+    total_training_steps = steps_per_epoch * args.epochs
+    scheduler = build_scheduler(
+        optimizer,
+        total_training_steps=total_training_steps,
+        warmup_steps=args.warmup_steps,
+        cosine_decay_strength=args.cosine_decay_strength,
+    )
 
     history: list[dict[str, float]] = []
     start_epoch = 1
 
     if args.resume_from is not None:
-        resumed_epoch, history = load_checkpoint(args.resume_from, model, optimizer, device)
+        resumed_epoch, history, scheduler_loaded = load_checkpoint(args.resume_from, model, optimizer, scheduler, device)
         start_epoch = resumed_epoch + 1
+
+        if scheduler is not None and not scheduler_loaded and resumed_epoch > 0:
+            completed_steps = resumed_epoch * steps_per_epoch
+            scheduler.step(completed_steps)
+
         print(f"Resumed from checkpoint: {args.resume_from} (epoch {resumed_epoch})")
 
         if start_epoch > args.epochs:
@@ -99,6 +140,7 @@ def main() -> None:
                 model,
                 train_loader,
                 optimizer,
+                scheduler,
                 device,
                 train=True,
                 phase_name=f"train {epoch}/{args.epochs}",
@@ -110,6 +152,7 @@ def main() -> None:
                 model,
                 val_loader,
                 optimizer,
+                scheduler,
                 device,
                 train=False,
                 phase_name=f"val {epoch}/{args.epochs}",
@@ -144,7 +187,7 @@ def main() -> None:
             )
 
             if args.checkpoint_every and epoch % args.checkpoint_every == 0:
-                checkpoint_path = save_checkpoint(model, optimizer, args.checkpoint_dir, epoch, history)
+                checkpoint_path = save_checkpoint(model, optimizer, scheduler, args.checkpoint_dir, epoch, history)
                 print(f"Saved checkpoint: {checkpoint_path}")
 
         save_artifacts(model, args.output_dir, history)

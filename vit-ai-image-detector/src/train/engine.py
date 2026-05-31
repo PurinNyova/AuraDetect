@@ -5,6 +5,7 @@ from collections.abc import Callable
 import numpy as np
 import torch
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import AutoModelForImageClassification
@@ -16,6 +17,7 @@ def run_phase(
     model: AutoModelForImageClassification,
     loader: DataLoader,
     optimizer: AdamW,
+    scheduler: LRScheduler | None,
     device: torch.device,
     train: bool,
     phase_name: str,
@@ -46,9 +48,12 @@ def run_phase(
             loss = outputs.loss
 
             if train:
+                current_learning_rate = float(optimizer.param_groups[0]["lr"])
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 optimizer.step()
+                if scheduler is not None:
+                    scheduler.step()
 
         total_loss += loss.item() * labels.size(0)
         total_examples += labels.size(0)
@@ -63,7 +68,7 @@ def run_phase(
                 "batch_loss": float(loss.item()),
             }
             if train:
-                step_payload["learning_rate"] = float(optimizer.param_groups[0]["lr"])
+                step_payload["learning_rate"] = current_learning_rate
             step_log_fn(step_payload)
 
     if total_examples == 0:
