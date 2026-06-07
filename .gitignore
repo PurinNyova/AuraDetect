@@ -15,7 +15,6 @@ dist/
 
 # Python environment and generated training outputs
 vit-ai-image-detector/env/
-vit-ai-image-detector/data/
 vit-ai-image-detector/src/__pycache__/
 vit-ai-image-detector/outputs/models/*.pt
 vit-ai-image-detector/outputs/models/*.bin

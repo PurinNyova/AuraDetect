@@ -30,16 +30,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument(
+        "--mixed-precision",
+        action="store_true",
+        help="Enable CUDA automatic mixed precision (AMP). Defaults to full precision (fp32).",
+    )
+    parser.add_argument(
         "--warmup-steps",
         type=int,
         default=0,
         help="Number of optimizer steps used to linearly warm up the learning rate.",
     )
     parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="cosine",
+        help="Learning rate scheduler to use.",
+    )
+    parser.add_argument(
         "--cosine-decay-strength",
         type=float,
         default=1.0,
-        help="How much of the base learning rate to decay over cosine schedule. 1.0 decays to 0, 0.5 decays to 50%% of base LR.",
+        help="(cosine) How much of the base learning rate to decay over cosine schedule. 1.0 decays to 0, 0.5 decays to 50%% of base LR.",
     )
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--max-train-batches", type=int, default=None)
@@ -94,7 +105,14 @@ def parse_args() -> argparse.Namespace:
     if args.warmup_steps < 0:
         parser.error("--warmup-steps must be 0 or greater.")
 
-    if not 0.0 <= args.cosine_decay_strength <= 1.0:
+    if args.scheduler is None:
+        parser.error("--scheduler must be provided.")
+
+    args.scheduler = str(args.scheduler).strip().lower()
+    if args.scheduler not in {"cosine", "constant"}:
+        parser.error("--scheduler must be one of: cosine, constant.")
+
+    if args.scheduler == "cosine" and not 0.0 <= args.cosine_decay_strength <= 1.0:
         parser.error("--cosine-decay-strength must be between 0.0 and 1.0.")
 
     if args.checkpoint_dir is None:

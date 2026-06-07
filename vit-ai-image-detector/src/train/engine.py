@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import numpy as np
 import torch
+from torch.cuda.amp import GradScaler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
@@ -21,6 +22,8 @@ def run_phase(
     device: torch.device,
     train: bool,
     phase_name: str,
+    mixed_precision: bool = False,
+    scaler: GradScaler | None = None,
     max_batches: int | None = None,
     step_log_fn: Callable[[dict[str, float | int]], None] | None = None,
 ) -> dict[str, float]:
@@ -44,14 +47,20 @@ def run_phase(
         labels = batch["labels"].to(device)
 
         with torch.set_grad_enabled(train):
-            outputs = model(pixel_values=pixel_values, labels=labels)
-            loss = outputs.loss
+            with torch.cuda.amp.autocast(enabled=mixed_precision):
+                outputs = model(pixel_values=pixel_values, labels=labels)
+                loss = outputs.loss
 
             if train:
                 current_learning_rate = float(optimizer.param_groups[0]["lr"])
                 optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                optimizer.step()
+                if mixed_precision and scaler is not None:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    optimizer.step()
                 if scheduler is not None:
                     scheduler.step()
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from transformers import AutoModelForImageClassification
 import torch
+from torch.cuda.amp import GradScaler
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -22,6 +23,7 @@ def save_checkpoint(
     model: AutoModelForImageClassification,
     optimizer: Optimizer,
     scheduler: LRScheduler | None,
+    scaler: GradScaler | None,
     checkpoint_dir: Path,
     epoch: int,
     history: list[dict[str, float]],
@@ -32,6 +34,7 @@ def save_checkpoint(
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": None if scheduler is None else scheduler.state_dict(),
+        "scaler_state_dict": None if scaler is None else scaler.state_dict(),
         "history": history,
     }
 
@@ -47,10 +50,16 @@ def load_checkpoint(
     optimizer: Optimizer,
     scheduler: LRScheduler | None,
     device: torch.device,
+    scaler: GradScaler | None = None,
 ) -> tuple[int, list[dict[str, float]], bool]:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+    scaler_state_dict = checkpoint.get("scaler_state_dict")
+    if scaler is not None and scaler_state_dict is not None:
+        scaler.load_state_dict(scaler_state_dict)
+
     scheduler_state_dict = checkpoint.get("scheduler_state_dict")
     if scheduler is not None and scheduler_state_dict is not None:
         scheduler.load_state_dict(scheduler_state_dict)
