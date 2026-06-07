@@ -68,6 +68,41 @@ def maybe_init_wandb(args: argparse.Namespace):
             "resume_from": None if args.resume_from is None else str(args.resume_from),
         },
     )
+
+    # Make epoch-level metrics chart against `epoch` and per-batch step metrics
+    # chart against `global_step` so wandb renders clean per-epoch charts for
+    # val_loss / val_accuracy / etc. We deliberately do NOT pass `step=` to
+    # wandb.log anywhere, because mixing a small epoch-indexed step (1..N) with
+    # a large per-batch step (thousands) causes wandb to silently drop the
+    # smaller-step entries (steps must be monotonically non-decreasing).
+    wandb.define_metric("global_step")
+    wandb.define_metric("epoch")
+    for step_metric_name in (
+        "train_batch",
+        "train_batch_size",
+        "train_batch_loss",
+        "train_learning_rate",
+        "val_batch",
+        "val_batch_size",
+        "val_batch_loss",
+        "phase",
+        "train_step",
+        "val_step",
+    ):
+        wandb.define_metric(step_metric_name, step_metric="global_step")
+    for metric_name in (
+        "train_loss",
+        "train_accuracy",
+        "train_f1",
+        "train_auc",
+        "val_loss",
+        "val_accuracy",
+        "val_f1",
+        "val_auc",
+        "val_accuracy_chart",
+    ):
+        wandb.define_metric(metric_name, step_metric="epoch")
+
     return wandb, run
 
 
@@ -96,8 +131,7 @@ def main() -> None:
                     "epoch": epoch,
                     "global_step": global_step,
                     f"{phase}_step": phase_steps[phase],
-                },
-                step=global_step,
+                }
             )
 
         return log_step
@@ -168,7 +202,23 @@ def main() -> None:
             history.append(epoch_metrics)
 
             if wandb is not None:
-                wandb.log(epoch_metrics, step=epoch)
+                wandb.log(epoch_metrics)
+
+                val_accuracy_table = wandb.Table(
+                    data=[[entry["epoch"], entry["val_accuracy"]] for entry in history],
+                    columns=["epoch", "val_accuracy"],
+                )
+                wandb.log(
+                    {
+                        "val_accuracy_chart": wandb.plot.line(
+                            val_accuracy_table,
+                            "epoch",
+                            "val_accuracy",
+                            title="Validation Accuracy",
+                        ),
+                        "epoch": epoch,
+                    }
+                )
 
             print(
                 " | ".join(

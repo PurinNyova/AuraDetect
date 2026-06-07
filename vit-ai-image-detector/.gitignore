@@ -1,5 +1,25 @@
 env/
-data/
+# Ignore everything under data/, but keep the dataset directory skeleton
+# (train/{ai,real}, val/{ai,real}) committed via .gitkeep files.
+data/*
+!data/dataset/
+data/dataset/*
+!data/dataset/train/
+!data/dataset/val/
+data/dataset/train/*
+data/dataset/val/*
+!data/dataset/train/ai/
+!data/dataset/train/real/
+!data/dataset/val/ai/
+!data/dataset/val/real/
+data/dataset/train/ai/*
+data/dataset/train/real/*
+data/dataset/val/ai/*
+data/dataset/val/real/*
+!data/dataset/train/ai/.gitkeep
+!data/dataset/train/real/.gitkeep
+!data/dataset/val/ai/.gitkeep
+!data/dataset/val/real/.gitkeep
 __pycache__/
 *.pyc
 *.pyo
@@ -14,3 +34,4 @@ outputs/models/*.json
 *.tar.gz
 /wandb
 /.kaggle-temp
+kaggle.json
