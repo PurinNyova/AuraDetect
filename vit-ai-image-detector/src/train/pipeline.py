@@ -16,6 +16,12 @@ from .engine import run_phase
 from .model import build_model
 
 
+# Thesis-level success constraint (BAB 1 §1.3). The detector must operate with
+# a false positive rate below this ceiling on the validation set; reported as
+# a warning per epoch so training logs surface the constraint directly.
+FPR_CONSTRAINT = 0.15
+
+
 def build_scheduler(
     optimizer: AdamW,
     total_training_steps: int,
@@ -117,11 +123,19 @@ def maybe_init_wandb(args: argparse.Namespace):
     for metric_name in (
         "train_loss",
         "train_accuracy",
+        "train_precision",
+        "train_recall",
         "train_f1",
+        "train_fpr",
+        "train_tpr",
         "train_auc",
         "val_loss",
         "val_accuracy",
+        "val_precision",
+        "val_recall",
         "val_f1",
+        "val_fpr",
+        "val_tpr",
         "val_auc",
         "val_accuracy_chart",
     ):
@@ -268,14 +282,25 @@ def main() -> None:
                         f"train_loss={train_metrics['loss']:.4f}",
                         f"train_acc={train_metrics['accuracy']:.4f}",
                         f"train_f1={train_metrics['f1']:.4f}",
+                        f"train_fpr={train_metrics['fpr']:.4f}",
                         f"train_auc={train_metrics['auc']:.4f}",
                         f"val_loss={val_metrics['loss']:.4f}",
                         f"val_acc={val_metrics['accuracy']:.4f}",
+                        f"val_prec={val_metrics['precision']:.4f}",
+                        f"val_rec={val_metrics['recall']:.4f}",
                         f"val_f1={val_metrics['f1']:.4f}",
+                        f"val_fpr={val_metrics['fpr']:.4f}",
                         f"val_auc={val_metrics['auc']:.4f}",
                     ]
                 )
             )
+            if val_metrics["fpr"] > FPR_CONSTRAINT:
+                print(
+                    f"  [WARN] val_fpr={val_metrics['fpr']:.4f} exceeds FPR constraint "
+                    f"({FPR_CONSTRAINT:.2f}) from BAB 1 §1.3"
+                )
+            else:
+                print(f"  [OK]   val_fpr={val_metrics['fpr']:.4f} satisfies FPR constraint ({FPR_CONSTRAINT:.2f})")
 
             if args.checkpoint_every and epoch % args.checkpoint_every == 0:
                 checkpoint_path = save_checkpoint(model, optimizer, scheduler, scaler, args.checkpoint_dir, epoch, history)
