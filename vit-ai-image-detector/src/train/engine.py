@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.cuda.amp import GradScaler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LRScheduler
@@ -12,6 +13,15 @@ from tqdm.auto import tqdm
 from transformers import AutoModelForImageClassification
 
 from .metrics import compute_epoch_metrics
+
+
+def compute_classification_loss(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    class_weights: torch.Tensor | None,
+) -> torch.Tensor:
+    """Weighted CE over {real=0, ai=1}. Higher real weight penalizes false AI more."""
+    return F.cross_entropy(logits, labels, weight=class_weights)
 
 
 def run_phase(
@@ -26,6 +36,7 @@ def run_phase(
     scaler: GradScaler | None = None,
     max_batches: int | None = None,
     step_log_fn: Callable[[dict[str, float | int]], None] | None = None,
+    class_weights: torch.Tensor | None = None,
 ) -> dict[str, float]:
     model.train(mode=train)
 
@@ -48,8 +59,9 @@ def run_phase(
 
         with torch.set_grad_enabled(train):
             with torch.cuda.amp.autocast(enabled=mixed_precision):
-                outputs = model(pixel_values=pixel_values, labels=labels)
-                loss = outputs.loss
+                # Forward without labels so loss uses our class weights, not HF defaults.
+                outputs = model(pixel_values=pixel_values)
+                loss = compute_classification_loss(outputs.logits, labels, class_weights)
 
             if train:
                 current_learning_rate = float(optimizer.param_groups[0]["lr"])

@@ -85,6 +85,8 @@ def maybe_init_wandb(args: argparse.Namespace):
             "epochs": args.epochs,
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
+            "real_class_weight": args.real_class_weight,
+            "ai_class_weight": args.ai_class_weight,
             "mixed_precision": args.mixed_precision,
             "warmup_steps": args.warmup_steps,
             "cosine_decay_strength": args.cosine_decay_strength,
@@ -153,6 +155,9 @@ def main() -> None:
 
     print(f"Using device: {device}")
     print(f"Mixed precision: {'enabled' if use_mixed_precision else 'disabled'}")
+    print(
+        f"Class weights: real={args.real_class_weight:.3f}, ai={args.ai_class_weight:.3f}"
+    )
 
     wandb, wandb_run = maybe_init_wandb(args)
     global_step = 0
@@ -178,6 +183,14 @@ def main() -> None:
             )
 
         return log_step
+
+    # Index order matches LABEL_TO_ID: real=0, ai=1. Higher real weight makes
+    # misclassifying real-as-AI more expensive, which should lower FPR/P(AI).
+    class_weights = torch.tensor(
+        [args.real_class_weight, args.ai_class_weight],
+        dtype=torch.float32,
+        device=device,
+    )
 
     train_loader, val_loader = build_dataloaders(args)
     model = build_model(device)
@@ -234,6 +247,7 @@ def main() -> None:
                 scaler=scaler,
                 max_batches=args.max_train_batches,
                 step_log_fn=make_step_logger("train", epoch),
+                class_weights=class_weights,
             )
 
             val_metrics = run_phase(
@@ -247,6 +261,7 @@ def main() -> None:
                 mixed_precision=use_mixed_precision,
                 max_batches=args.max_val_batches,
                 step_log_fn=make_step_logger("val", epoch),
+                class_weights=class_weights,
             )
 
             epoch_metrics = {

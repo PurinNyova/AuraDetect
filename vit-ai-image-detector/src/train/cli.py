@@ -30,6 +30,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument(
+        "--real-class-weight",
+        type=float,
+        default=1.3,
+        help="Cross-entropy weight for the real class (label 0). >1.0 penalizes false AI more.",
+    )
+    parser.add_argument(
+        "--ai-class-weight",
+        type=float,
+        default=1.0,
+        help="Cross-entropy weight for the AI class (label 1).",
+    )
+    parser.add_argument(
         "--mixed-precision",
         action="store_true",
         help="Enable CUDA automatic mixed precision (AMP). Defaults to full precision (fp32).",
@@ -101,6 +113,12 @@ def parse_args() -> argparse.Namespace:
 
     if args.checkpoint_every < 0:
         parser.error("--checkpoint-every must be 0 or greater.")
+
+    if args.real_class_weight <= 0.0:
+        parser.error("--real-class-weight must be > 0.")
+
+    if args.ai_class_weight <= 0.0:
+        parser.error("--ai-class-weight must be > 0.")
 
     if args.warmup_steps < 0:
         parser.error("--warmup-steps must be 0 or greater.")
