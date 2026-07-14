@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--real-class-weight",
         type=float,
-        default=1.3,
+        default=1.0,
         help="Cross-entropy weight for the real class (label 0). >1.0 penalizes false AI more.",
     )
     parser.add_argument(
@@ -63,6 +63,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="(cosine) How much of the base learning rate to decay over cosine schedule. 1.0 decays to 0, 0.5 decays to 50%% of base LR.",
+    )
+    parser.add_argument(
+        "--cosine-flat-period",
+        type=float,
+        default=0.0,
+        help="(cosine) Percentage of post-warmup training steps to hold LR flat at base value before decay starts. 0 = no flat period; 10 = flat for 10%% of post-warmup steps then decay over the rest.",
     )
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--max-train-batches", type=int, default=None)
@@ -132,6 +138,9 @@ def parse_args() -> argparse.Namespace:
 
     if args.scheduler == "cosine" and not 0.0 <= args.cosine_decay_strength <= 1.0:
         parser.error("--cosine-decay-strength must be between 0.0 and 1.0.")
+
+    if args.scheduler == "cosine" and not 0.0 <= args.cosine_flat_period <= 100.0:
+        parser.error("--cosine-flat-period must be between 0.0 and 100.0.")
 
     if args.checkpoint_dir is None:
         args.checkpoint_dir = args.output_dir / "checkpoints"

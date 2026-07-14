@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,19 @@ from PIL import Image, UnidentifiedImageError
 import torch
 from torch.utils.data import Dataset
 from transformers import ViTImageProcessor
+
+# Ensure TLS verification works on Windows/managed Pythons where the default
+# CA bundle is missing (e.g. conda base without certifi on PATH). This must
+# run before huggingface_hub's first request.
+try:
+    import certifi  # type: ignore
+
+    _ca = certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE", _ca)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", _ca)
+    os.environ.setdefault("CURL_CA_BUNDLE", _ca)
+except Exception:  # pragma: no cover - certifi not installed
+    pass
 
 
 LABEL_TO_ID = {"real": 0, "ai": 1}
@@ -93,6 +107,62 @@ def discover_samples(data_dir: Path, split: str) -> list[ImageSample]:
     return samples
 
 
+def _find_local_snapshot(model_name: str) -> str | None:
+    """Return the local HF cache directory for `model_name` if it exists.
+
+    Tries the modern `HF_HUB_CACHE` / `HF_HOME` layout first, then falls back
+    to the legacy `TRANSFORMERS_CACHE` and `~/.cache/huggingface` paths so we
+    can load the processor fully offline once the model has been downloaded.
+    """
+    if os.path.isabs(model_name) and Path(model_name).is_dir():
+        return model_name
+
+    repo_dir = "models--" + model_name.replace("/", "--")
+
+    candidates: list[Path] = []
+    for env in ("HF_HUB_CACHE", "HF_HOME", "TRANSFORMERS_CACHE"):
+        root = os.environ.get(env)
+        if not root:
+            continue
+        base = Path(root)
+        if env == "HF_HOME":
+            base = base / "hub"
+        candidates.append(base / repo_dir)
+
+    candidates.append(Path.home() / ".cache" / "huggingface" / "hub" / repo_dir)
+    candidates.append(Path.home() / ".cache" / "huggingface" / repo_dir)
+
+    for candidate in candidates:
+        if not candidate.is_dir():
+            continue
+        snapshots = candidate / "snapshots"
+        if not snapshots.is_dir():
+            continue
+        for snap in snapshots.iterdir():
+            if (snap / "preprocessor_config.json").is_file():
+                return str(snap)
+    return None
+
+
+def _load_processor(model_name: str):
+    """Load a ViTImageProcessor, preferring a local snapshot to avoid the network."""
+    local = _find_local_snapshot(model_name)
+    if local is not None:
+        return ViTImageProcessor.from_pretrained(local)
+
+    # No local copy. Try the network; the SSL env vars set at import time
+    # should let the request succeed on managed Python installs.
+    try:
+        return ViTImageProcessor.from_pretrained(model_name)
+    except (OSError, RuntimeError) as exc:
+        raise RuntimeError(
+            f"Could not load image processor for '{model_name}'. "
+            f"Pre-download it once with `huggingface-cli download {model_name}` "
+            f"or set HF_HOME to a directory that already contains it. "
+            f"Underlying error: {exc}"
+        ) from exc
+
+
 class AiImageDataset(Dataset):
     def __init__(
         self,
@@ -104,7 +174,7 @@ class AiImageDataset(Dataset):
         self.data_dir = Path(data_dir)
         self.split = split
         self.cache_processed = cache_processed
-        self.processor = ViTImageProcessor.from_pretrained(model_name)
+        self.processor = _load_processor(model_name)
         image_size = self.processor.size["height"] if isinstance(self.processor.size, dict) else 384
 
         self.samples = discover_samples(self.data_dir, split)

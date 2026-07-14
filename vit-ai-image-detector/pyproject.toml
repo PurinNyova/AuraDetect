@@ -1,0 +1,140 @@
+# pyproject.toml for vit-ai-image-detector
+#
+# This file is the canonical source of project metadata and runtime
+# dependencies. It supersedes requirements.txt for tools that understand
+# PEP 621 (uv, pip >= 23, pip-tools, Poetry, Hatch, etc.).
+#
+# requirements.txt is kept only for pip workflows that need the +cu124
+# local version identifiers preserved verbatim. Installing directly from
+# this file (e.g. `pip install -e .[notebook]` or `uv sync --extra notebook`)
+# is the recommended path.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vit-ai-image-detector"
+version = "0.1.0"
+description = "Fine-tunes google/vit-large-patch16-384 for binary AI vs. real image classification."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "AuraDetect" }]
+keywords = [
+  "vit",
+  "transformer",
+  "ai-detection",
+  "deepfake-detection",
+  "image-classification",
+  "pytorch",
+  "huggingface",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# ---------------------------------------------------------------------------
+# Runtime dependencies
+# ---------------------------------------------------------------------------
+# The list below is curated to direct imports + Hugging Face ecosystem
+# standards. Transitive packages (aiohttp, jupyter stack, colorama, etc.)
+# are intentionally omitted and resolved automatically by the installer.
+#
+# PyTorch is pinned to the CUDA 12.4 wheels (the +cu124 local version).
+# uv resolves them via [tool.uv] below. For plain pip, install them first
+# using the official index URL:
+#   pip install torch==2.6.0+cu124 torchaudio==2.6.0+cu124 torchvision==0.21.0+cu124 \
+#       --index-url https://download.pytorch.org/whl/cu124
+# and then `pip install -e .` for the rest.
+dependencies = [
+  # Deep learning core (CUDA 12.4 wheels)
+  "torch==2.6.0+cu124",
+  "torchaudio==2.6.0+cu124",
+  "torchvision==0.21.0+cu124",
+
+  # Hugging Face stack
+  "transformers==5.8.0",
+  "datasets==4.8.5",
+  "accelerate==1.13.0",
+  "tokenizers==0.22.2",
+  "safetensors==0.7.0",
+  "huggingface_hub==1.14.0",
+
+  # Image loading & augmentation
+  "pillow==12.1.1",
+  "opencv-python-headless==4.13.0.92",
+  "albumentations==2.0.8",
+  "albucore==0.0.24",
+
+  # Numerics & classical ML
+  "numpy==2.2.6",
+  "scikit-learn==1.7.2",
+
+  # Plotting (used by src/train/confusion.py for the confusion matrix)
+  "matplotlib>=3.10.0",
+
+  # Inference API server
+  "flask==3.1.2",
+
+  # Experiment tracking
+  "wandb==0.20.1",
+
+  # General utilities used across the scripts
+  "tqdm==4.67.3",
+]
+
+[project.optional-dependencies]
+# Data exploration notebooks and dataset fetch tooling.
+notebook = [
+  "jupyterlab==4.5.7",
+  "ipykernel==7.2.0",
+  "ipython==8.39.0",
+  "kaggle==1.7.4.5",
+]
+# Convenience meta-extra: install everything (runtime + notebook tooling).
+all = ["vit-ai-image-detector[notebook]"]
+
+# ---------------------------------------------------------------------------
+# Build target
+# ---------------------------------------------------------------------------
+# Ship the `train` subpackage (the only directory under src/ that has an
+# __init__.py and is therefore a real importable package). The loose
+# top-level scripts in src/ (dataset.py, infer.py, infer_api.py, train.py,
+# fetch_*.py, data_fetch.py) are intentionally NOT installed; they are
+# executed directly from the working tree via `python src/<script>.py`.
+[tool.hatch.build.targets.wheel]
+packages = ["src/train"]
+# Exclude __pycache__ directories and stray editor files from the wheel.
+exclude = ["**/__pycache__", "**/*.pyc", "**/.DS_Store"]
+# Exclude the same noise from sdists.
+[tool.hatch.build.targets.sdist]
+packages = ["src/train"]
+exclude = ["**/__pycache__", "**/*.pyc", "**/.DS_Store", "/.venv", "/.uv-cache"]
+
+# ---------------------------------------------------------------------------
+# uv configuration
+# ---------------------------------------------------------------------------
+# Routes the PyTorch stack to the official CUDA 12.4 wheel index so the
+# +cu124 local versions in `dependencies` resolve correctly.
+# Install with:    uv sync --extra notebook
+# Runtime only:    uv sync
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchaudio = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
