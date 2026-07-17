@@ -37,6 +37,7 @@ def run_phase(
     max_batches: int | None = None,
     step_log_fn: Callable[[dict[str, float | int]], None] | None = None,
     class_weights: torch.Tensor | None = None,
+    max_grad_norm: float | None = None,
 ) -> dict[str, float]:
     model.train(mode=train)
 
@@ -44,6 +45,7 @@ def run_phase(
     total_examples = 0
     all_logits: list[np.ndarray] = []
     all_labels: list[np.ndarray] = []
+    clip_gradients = max_grad_norm is not None and max_grad_norm > 0.0
 
     total_batches = len(loader)
     if max_batches is not None:
@@ -68,10 +70,16 @@ def run_phase(
                 optimizer.zero_grad(set_to_none=True)
                 if mixed_precision and scaler is not None:
                     scaler.scale(loss).backward()
+                    if clip_gradients:
+                        # Unscale before clipping so max_grad_norm applies in true fp32 space.
+                        scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                     scaler.step(optimizer)
                     scaler.update()
                 else:
                     loss.backward()
+                    if clip_gradients:
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                     optimizer.step()
                 if scheduler is not None:
                     scheduler.step()

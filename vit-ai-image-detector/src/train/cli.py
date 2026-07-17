@@ -71,6 +71,12 @@ def parse_args() -> argparse.Namespace:
         help="(cosine) Percentage of post-warmup training steps to hold LR flat at base value before decay starts. 0 = no flat period; 10 = flat for 10%% of post-warmup steps then decay over the rest.",
     )
     parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument(
+        "--max-grad-norm",
+        type=float,
+        default=1.0,
+        help="Max L2 norm for gradient clipping. Use 0 to disable.",
+    )
     parser.add_argument("--max-train-batches", type=int, default=None)
     parser.add_argument("--max-val-batches", type=int, default=None)
     parser.add_argument(
@@ -128,6 +134,9 @@ def parse_args() -> argparse.Namespace:
 
     if args.warmup_steps < 0:
         parser.error("--warmup-steps must be 0 or greater.")
+
+    if args.max_grad_norm < 0.0:
+        parser.error("--max-grad-norm must be 0 or greater.")
 
     if args.scheduler is None:
         parser.error("--scheduler must be provided.")

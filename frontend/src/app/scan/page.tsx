@@ -29,10 +29,71 @@ type ScanResponse = {
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
+type VerdictTone = "success" | "error" | "warning";
+
 const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
 
-function getVerdictTone(value: string) {
-  return value.trim().toLowerCase() === "real" ? "success" : "error";
+/**
+ * Map API verdict strings to UI tone.
+ * Firm labels: "AI" / "Real" (confidence >= 85%).
+ * Uncertain: "Possibly X" / "Unsure it's X".
+ */
+function getVerdictTone(value: string): VerdictTone {
+  const normalized = value.trim().toLowerCase();
+
+  if (
+    normalized.startsWith("possibly ")
+    || normalized.startsWith("unsure it's ")
+    || normalized.startsWith("unsure it\u2019s ")
+  ) {
+    return "warning";
+  }
+
+  if (normalized === "real" || normalized.endsWith(" real")) {
+    return "success";
+  }
+
+  return "error";
+}
+
+function getVerdictToneToken(tone: VerdictTone, part: "bg" | "text" | "border") {
+  if (tone === "warning") {
+    if (part === "bg") {
+      return "bg.overlay";
+    }
+
+    if (part === "border") {
+      return "border.subtle";
+    }
+
+    return "fg.default";
+  }
+
+  return `status.${tone}.${part}`;
+}
+
+function getVerdictGlyph(tone: VerdictTone) {
+  if (tone === "success") {
+    return "✓";
+  }
+
+  if (tone === "warning") {
+    return "?";
+  }
+
+  return "!";
+}
+
+function getMetricBarColor(tone: VerdictTone | "success" | "error") {
+  if (tone === "success") {
+    return "status.success.text";
+  }
+
+  if (tone === "error") {
+    return "status.error.text";
+  }
+
+  return "fg.muted";
 }
 
 function isScanResponse(value: unknown): value is ScanResponse {
@@ -365,7 +426,13 @@ export default function ScanPage() {
 
   const verdict = result?.verdict ?? result?.predicted_label ?? "Unknown";
   const verdictTone = getVerdictTone(verdict);
-  const scoreMetrics = result
+  type ScoreMetric = {
+    label: string;
+    value: number;
+    tone: VerdictTone;
+  };
+
+  const scoreMetrics: ScoreMetric[] = result
     ? [
         {
           label: "AI score",
@@ -597,12 +664,12 @@ export default function ScanPage() {
                       fontWeight="700"
                       fontSize="1.25rem"
                       mb="8"
-                      bg={`status.${verdictTone}.bg`}
-                      color={`status.${verdictTone}.text`}
+                      bg={getVerdictToneToken(verdictTone, "bg")}
+                      color={getVerdictToneToken(verdictTone, "text")}
                       borderWidth="1px"
-                      borderColor={`status.${verdictTone}.border`}
+                      borderColor={getVerdictToneToken(verdictTone, "border")}
                     >
-                      <Text as="span">{verdictTone === "success" ? "✓" : "!"}</Text>
+                      <Text as="span">{getVerdictGlyph(verdictTone)}</Text>
                       <Text as="span">
                         {formatPercent(result.confidence)}
                         {" "}
@@ -615,8 +682,7 @@ export default function ScanPage() {
                     </Text>
 
                     {scoreMetrics.map((metric) => {
-                      const toneColor
-                        = metric.tone === "success" ? "status.success.text" : "status.error.text";
+                      const toneColor = getMetricBarColor(metric.tone);
 
                       return (
                         <Box key={metric.label} mb="6">
@@ -646,16 +712,21 @@ export default function ScanPage() {
                         System Notes:
                       </Text>
                       {" "}
-                      The model classified this upload as
+                      Raw model class is
                       {" "}
                       {result.predicted_label}
                       {" "}
-                      with a
-                      confidence of
+                      at
                       {" "}
                       {formatPercent(result.confidence)}
-                      . Compare the AI and Real
-                      score bars to gauge how decisive the classification was.
+                      {" "}
+                      confidence. Verdict
+                      {" "}
+                      {verdict}
+                      {" "}
+                      uses confidence bands: firm at ≥85%, Possibly at 65–85%, and
+                      Unsure below 65%. Compare the AI and Real score bars for how
+                      decisive the classification was.
                     </Text>
 
                     <Button

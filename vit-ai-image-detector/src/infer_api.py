@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 from pathlib import Path
 
 print("Import transformers")
@@ -18,7 +17,11 @@ from flask import Flask, jsonify, request
 
 DEFAULT_PROCESSOR_NAME = "google/vit-large-patch16-384"
 DEFAULT_MODEL_DIR = Path("outputs/models/vit-full")
-DEFAULT_AI_VERDICT_THRESHOLD = 0.75
+# Firm AI/Real verdict only at or above this confidence.
+DEFAULT_HIGH_CONFIDENCE_THRESHOLD = 0.85
+# Below this, the model is near a coin-flip → "Unsure it's X".
+# Between mid and high → "Possibly X".
+DEFAULT_MID_CONFIDENCE_THRESHOLD = 0.65
 
 print("Start")
 def parse_args() -> argparse.Namespace:
@@ -29,13 +32,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument(
-        "--ai-verdict-threshold",
+        "--high-confidence-threshold",
         type=float,
-        default=DEFAULT_AI_VERDICT_THRESHOLD,
+        default=DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
         help=(
-            "Minimum AI-class probability (0.0-1.0) required before a scan is "
-            "counted as 'Ai'. Below this threshold the verdict falls back to "
-            "'Real'. Defaults to 0.75."
+            "Minimum top-class probability (0.0-1.0) for a firm AI/Real verdict. "
+            "Defaults to 0.85."
+        ),
+    )
+    parser.add_argument(
+        "--mid-confidence-threshold",
+        type=float,
+        default=DEFAULT_MID_CONFIDENCE_THRESHOLD,
+        help=(
+            "Minimum top-class probability (0.0-1.0) for a 'Possibly X' verdict. "
+            "Below this the API returns 'Unsure it's X'. Defaults to 0.65. "
+            "Must be less than --high-confidence-threshold."
         ),
     )
     return parser.parse_args()
@@ -82,23 +94,22 @@ def find_ai_label_index(id2label: dict[int, str]) -> int | None:
 
 def resolve_verdict(
     predicted_label: str,
-    ai_label: str | None,
-    ai_score: float | None,
-    threshold: float,
+    confidence: float,
+    high_threshold: float = DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
+    mid_threshold: float = DEFAULT_MID_CONFIDENCE_THRESHOLD,
 ) -> str:
-    """Apply the AI verdict threshold.
+    """Map top-class confidence into a tiered verdict with uncertainty.
 
-    The verdict is the AI label only when the AI class probability is at or
-    above ``threshold``. Otherwise the verdict falls back to the opposing
-    (real/authentic) class so a low-confidence prediction is not counted as AI.
+    - confidence >= high_threshold → firm label (e.g. ``AI`` / ``Real``)
+    - mid_threshold <= confidence < high_threshold → ``Possibly {label}``
+    - confidence < mid_threshold → ``Unsure it's {label}``
     """
-    if ai_label is not None and ai_score is not None and ai_score >= threshold:
-        return ai_label
-    if ai_label is not None and predicted_label != ai_label:
-        return predicted_label
-    # No AI class configured, or the model picked AI but below threshold:
-    # fall back to the most likely non-AI label.
-    return "Real"
+    label = predicted_label.strip() or "Unknown"
+    if confidence >= high_threshold:
+        return label
+    if confidence >= mid_threshold:
+        return f"Possibly {label}"
+    return f"Unsure it's {label}"
 
 
 def predict_image_bytes(
@@ -106,7 +117,8 @@ def predict_image_bytes(
     model: AutoModelForImageClassification,
     processor: AutoImageProcessor,
     device: torch.device,
-    ai_verdict_threshold: float = DEFAULT_AI_VERDICT_THRESHOLD,
+    high_confidence_threshold: float = DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
+    mid_confidence_threshold: float = DEFAULT_MID_CONFIDENCE_THRESHOLD,
 ) -> dict[str, object]:
     with Image.open(io.BytesIO(image_bytes)) as image:
         rgb_image = image.convert("RGB")
@@ -126,23 +138,26 @@ def predict_image_bytes(
         for index, score in enumerate(probabilities_list)
     }
 
+    predicted_label = id2label[predicted_id]
+    confidence = float(probabilities_list[predicted_id])
+
     ai_index = find_ai_label_index(id2label)
-    ai_label = id2label.get(ai_index) if ai_index is not None else None
     ai_score = float(probabilities_list[ai_index]) if ai_index is not None else None
 
     verdict = resolve_verdict(
-        predicted_label=id2label[predicted_id],
-        ai_label=ai_label,
-        ai_score=ai_score,
-        threshold=ai_verdict_threshold,
+        predicted_label=predicted_label,
+        confidence=confidence,
+        high_threshold=high_confidence_threshold,
+        mid_threshold=mid_confidence_threshold,
     )
 
     return {
-        "predicted_label": id2label[predicted_id],
+        "predicted_label": predicted_label,
         "verdict": verdict,
-        "confidence": round(float(probabilities_list[predicted_id]), 6),
+        "confidence": round(confidence, 6),
         "ai_score": round(ai_score, 6) if ai_score is not None else None,
-        "verdict_threshold": ai_verdict_threshold,
+        "high_confidence_threshold": high_confidence_threshold,
+        "mid_confidence_threshold": mid_confidence_threshold,
         "scores": scores,
     }
 
@@ -150,15 +165,24 @@ def predict_image_bytes(
 def create_app(
     model_dir: Path = DEFAULT_MODEL_DIR,
     device_name: str = "auto",
-    ai_verdict_threshold: float = DEFAULT_AI_VERDICT_THRESHOLD,
+    high_confidence_threshold: float = DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
+    mid_confidence_threshold: float = DEFAULT_MID_CONFIDENCE_THRESHOLD,
 ) -> Flask:
+    if not 0.0 <= mid_confidence_threshold < high_confidence_threshold <= 1.0:
+        raise ValueError(
+            "Confidence thresholds must satisfy "
+            "0 <= mid_confidence_threshold < high_confidence_threshold <= 1 "
+            f"(got mid={mid_confidence_threshold}, high={high_confidence_threshold})."
+        )
+
     device = resolve_device(device_name)
     model, processor = load_runtime(model_dir, device)
 
     app = Flask(__name__)
     app.config["MODEL_DIR"] = str(model_dir)
     app.config["DEVICE"] = str(device)
-    app.config["AI_VERDICT_THRESHOLD"] = ai_verdict_threshold
+    app.config["HIGH_CONFIDENCE_THRESHOLD"] = high_confidence_threshold
+    app.config["MID_CONFIDENCE_THRESHOLD"] = mid_confidence_threshold
 
     @app.get("/health")
     def health() -> tuple[dict[str, object], int]:
@@ -166,7 +190,8 @@ def create_app(
             "status": "ok",
             "device": str(device),
             "model_dir": str(model_dir),
-            "ai_verdict_threshold": ai_verdict_threshold,
+            "high_confidence_threshold": high_confidence_threshold,
+            "mid_confidence_threshold": mid_confidence_threshold,
         }, 200
 
     @app.post("/ai-scan")
@@ -185,7 +210,8 @@ def create_app(
                 model,
                 processor,
                 device,
-                ai_verdict_threshold=ai_verdict_threshold,
+                high_confidence_threshold=high_confidence_threshold,
+                mid_confidence_threshold=mid_confidence_threshold,
             )
         except UnidentifiedImageError:
             return jsonify({"error": "Uploaded file is not a supported image."}), 400
@@ -205,12 +231,17 @@ def main() -> None:
     app = create_app(
         model_dir=args.model_dir,
         device_name=args.device,
-        ai_verdict_threshold=args.ai_verdict_threshold,
+        high_confidence_threshold=args.high_confidence_threshold,
+        mid_confidence_threshold=args.mid_confidence_threshold,
     )
 
     print(f"Using device: {app.config['DEVICE']}")
     print(f"Loading model from: {app.config['MODEL_DIR']}")
-    print(f"AI verdict threshold: {app.config['AI_VERDICT_THRESHOLD']:.4f}")
+    print(
+        "Confidence thresholds: "
+        f"high={app.config['HIGH_CONFIDENCE_THRESHOLD']:.4f}, "
+        f"mid={app.config['MID_CONFIDENCE_THRESHOLD']:.4f}"
+    )
     print(f"Serving on http://{args.host}:{args.port}")
 
     app.run(host=args.host, port=args.port, debug=args.debug)

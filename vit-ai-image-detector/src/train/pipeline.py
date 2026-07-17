@@ -132,6 +132,7 @@ def maybe_init_wandb(args: argparse.Namespace):
             "real_class_weight": args.real_class_weight,
             "ai_class_weight": args.ai_class_weight,
             "mixed_precision": args.mixed_precision,
+            "max_grad_norm": args.max_grad_norm,
             "warmup_steps": args.warmup_steps,
             "cosine_decay_strength": args.cosine_decay_strength,
             "cosine_flat_period": args.cosine_flat_period,
@@ -323,6 +324,7 @@ def main() -> None:
                 max_batches=args.max_train_batches,
                 step_log_fn=make_step_logger("train", epoch),
                 class_weights=class_weights,
+                max_grad_norm=args.max_grad_norm,
             )
             _dbg(
                 f"=== epoch {epoch}/{args.epochs}: train phase done in "

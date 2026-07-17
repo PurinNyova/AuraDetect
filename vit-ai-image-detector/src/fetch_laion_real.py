@@ -109,6 +109,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Reject images taller than this many pixels.",
     )
+    parser.add_argument(
+        "--exclude-subdirs",
+        type=Path,
+        nargs="*",
+        default=None,
+        help=(
+            "Additional subdirectories under --dataset-dir whose images are treated "
+            "as already collected. URLs whose SHA-1 hash matches an existing file "
+            "in any of these directories are skipped, enabling cross-set deduplication."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -121,6 +132,29 @@ def discover_existing_count(output_dir: Path) -> int:
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
             count += 1
     return count
+
+
+def collect_existing_hashes(*dirs: Path) -> set[str]:
+    """Return the set of SHA-1 URL hashes already present in the given directories.
+
+    Hashes are derived from image filenames (the script names files as
+    ``{url_hash}{ext}``), so this works even if the JSON sidecars are missing.
+    """
+    hashes: set[str] = set()
+    for directory in dirs:
+        if directory is None or not directory.exists():
+            continue
+        for path in directory.rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
+                continue
+            stem = path.stem
+            if stem:
+                hashes.add(stem)
+    return hashes
+
+
+def url_hash(url: str) -> str:
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()
 
 
 def load_laion_stream(dataset_name: str, shuffle_buffer: int, seed: int) -> IterableDataset:
@@ -201,9 +235,13 @@ def download_record(
     min_height: int,
     max_width: int | None,
     max_height: int | None,
+    excluded_hashes: set[str] | None = None,
 ) -> bool:
     url = extract_url(record)
     if not url:
+        return False
+
+    if excluded_hashes and url_hash(url) in excluded_hashes:
         return False
 
     try:
@@ -292,6 +330,7 @@ def schedule_downloads(
     min_height: int,
     max_width: int | None,
     max_height: int | None,
+    excluded_hashes: set[str] | None = None,
 ) -> tuple[int, int]:
     successful = existing_count
     attempts = 0
@@ -317,6 +356,7 @@ def schedule_downloads(
                         min_height,
                         max_width,
                         max_height,
+                        excluded_hashes,
                     )
                 )
 
@@ -360,6 +400,14 @@ def main() -> None:
     output_dir = args.dataset_dir / args.output_subdir
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    excluded_dirs: list[Path] = []
+    if args.exclude_subdirs:
+        for sub in args.exclude_subdirs:
+            excluded_dirs.append(args.dataset_dir / sub)
+    excluded_hashes = collect_existing_hashes(*excluded_dirs) if excluded_dirs else set()
+    if excluded_hashes:
+        print(f"Loaded {len(excluded_hashes)} URL hash(es) from excluded sets for cross-set deduplication.")
+
     existing_count = discover_existing_count(output_dir)
     if existing_count >= args.limit:
         manifest_path = write_manifest(args.dataset_dir)
@@ -393,6 +441,7 @@ def main() -> None:
         min_height=args.min_height,
         max_width=args.max_width,
         max_height=args.max_height,
+        excluded_hashes=excluded_hashes or None,
     )
 
     manifest_path = write_manifest(args.dataset_dir)
